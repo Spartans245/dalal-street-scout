@@ -7,7 +7,6 @@ cd /d d:\Dalal_street
 
 :: Disable sleep during market hours (restored at 4 PM by RESTORE_SLEEP.bat)
 powercfg /change standby-timeout-ac 0
-powercfg /change monitor-timeout-ac 0
 
 :: Log startup attempt
 echo [%date% %time%] Market start triggered >> d:\Dalal_street\market_start.log

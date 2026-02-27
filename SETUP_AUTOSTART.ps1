@@ -1,6 +1,6 @@
 # Dalal Street Scout — One-time Auto-start Setup
 # Run this script ONCE as Administrator
-# Right-click SETUP_AUTOSTART.ps1 → "Run with PowerShell" → allow when asked
+# Right-click SETUP_AUTOSTART.ps1 -> "Run with PowerShell" -> allow when asked
 
 Write-Host ""
 Write-Host "======================================================"
@@ -11,7 +11,7 @@ Write-Host ""
 # ── Check for Admin ──────────────────────────────────────────────
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
     Write-Host "ERROR: Please run this script as Administrator."
-    Write-Host "Right-click the file → Run with PowerShell → Yes"
+    Write-Host "Right-click the file -> Run with PowerShell -> Yes"
     pause
     exit
 }
@@ -79,18 +79,18 @@ Write-Host "1. Download Tailscale on this PC:"
 Write-Host "   https://tailscale.com/download/windows"
 Write-Host ""
 Write-Host "2. Download Tailscale on your phone:"
-Write-Host "   Android: Play Store → search 'Tailscale'"
-Write-Host "   iPhone:  App Store  → search 'Tailscale'"
+Write-Host "   Android: Play Store -> search 'Tailscale'"
+Write-Host "   iPhone:  App Store  -> search 'Tailscale'"
 Write-Host ""
 Write-Host "3. Sign in with the SAME account on both devices"
 Write-Host "   (Google/GitHub login works)"
 Write-Host ""
-Write-Host "4. On PC: open Tailscale in system tray → note your"
+Write-Host "4. On PC: open Tailscale in system tray -> note your"
 Write-Host "   Tailscale IP (looks like 100.x.x.x)"
 Write-Host ""
 Write-Host "5. On phone browser open:"
 Write-Host "   http://100.x.x.x:5000"
 Write-Host ""
-Write-Host "That's it — your scanner accessible from anywhere!"
+Write-Host "Done! Your scanner is now accessible from anywhere!"
 Write-Host ""
 pause
