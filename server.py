@@ -704,7 +704,7 @@ def main():
 """)
     t = threading.Thread(target=scheduler, daemon=True)
     t.start()
-    server = HTTPServer(('localhost', PORT), Handler)
+    server = HTTPServer(('0.0.0.0', PORT), Handler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
