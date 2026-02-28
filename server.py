@@ -9,6 +9,15 @@ import json, datetime, math, time, threading, os, sys
 import warnings
 warnings.filterwarnings('ignore')
 
+# Prevent Windows from sleeping while server is running
+try:
+    import ctypes
+    ES_CONTINUOUS      = 0x80000000
+    ES_SYSTEM_REQUIRED = 0x00000001
+    ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+except Exception:
+    pass
+
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
