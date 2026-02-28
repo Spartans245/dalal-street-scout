@@ -222,6 +222,70 @@ td{padding:11px 13px;font-size:13px;white-space:nowrap;}
   .dg{grid-template-columns:repeat(2,1fr);}
   .sg,.pgrid{grid-template-columns:1fr;}
   .srow{grid-template-columns:repeat(2,1fr);}
+  table{min-width:800px;}
+}
+
+@media(max-width:600px){
+  /* Header — wrap into 2 rows */
+  header{height:auto;flex-wrap:wrap;padding:10px 14px;gap:8px;}
+  .logo{font-size:18px;}
+  .logo-v{display:none;}
+  .hc{gap:6px;}
+  .mbadge{padding:5px 9px;font-size:10px;}
+  #istTime{display:none;}
+  /* Hide rescan button on mobile — use PC for rescans */
+  #rescanBtn{display:none;}
+  .hr{gap:6px;}
+  .btn{padding:7px 10px;font-size:12px;}
+
+  /* Panels */
+  .panel{padding:10px 12px;}
+
+  /* Stat cards */
+  .srow{grid-template-columns:repeat(2,1fr);gap:8px;}
+  .sv{font-size:20px;}
+  .scard{padding:12px;}
+
+  /* Filter bar */
+  .fbar{gap:6px;}
+  .fsel{font-size:11px;padding:6px 8px;}
+
+  /* Table — show only key columns, reduce min-width */
+  table{min-width:480px;}
+  td{padding:8px 10px;}
+  th{padding:8px 10px;font-size:9px;}
+  /* Hide: P/E, MCAP, FUNDAMENTALS, VS PREV, NEW SCORE */
+  table th:nth-child(5),table td:nth-child(5),
+  table th:nth-child(6),table td:nth-child(6),
+  table th:nth-child(7),table td:nth-child(7),
+  table th:nth-child(9),table td:nth-child(9),
+  table th:nth-child(10),table td:nth-child(10){display:none;}
+  .tn{font-size:13px;}
+  .ts{font-size:9px;}
+  .sbadge{width:32px;height:32px;font-size:11px;}
+
+  /* Picks */
+  .pgrid{grid-template-columns:1fr;gap:8px;}
+  .pname{font-size:20px;}
+  .pprice{font-size:17px;}
+
+  /* Modals — slide up from bottom */
+  .mov{padding:0;align-items:flex-end;}
+  .modal{border-radius:16px 16px 0 0;max-height:92vh;}
+  .modal[style*="960px"]{max-width:100%;}
+  .mbody{padding:14px;}
+  .mhdr{padding:14px 16px;}
+  .dg{grid-template-columns:repeat(2,1fr);}
+
+  /* Strategy panel — full width */
+  #stratPanel{width:100% !important;right:-100% !important;}
+
+  /* Mode strip */
+  .mstrip{font-size:10px;padding:6px 14px;}
+
+  /* Tabs */
+  .tabs{padding:0 8px;}
+  .tab{padding:10px 12px;font-size:12px;}
 }
 </style>
 </head>
