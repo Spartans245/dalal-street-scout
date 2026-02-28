@@ -577,6 +577,7 @@ let watchlist  = (()=>{try{return JSON.parse(localStorage.getItem('dss4_wl')||'[
 let sortState  = {col:'score',asc:false};
 let connected  = false;
 let serverStatus = 'starting';
+let lastUpdated = null;
 let refreshCountdown = 0;
 let dataLoaded = false;
 
@@ -635,8 +636,8 @@ async function pollStatus(){
       document.getElementById('progressBar').classList.remove('show');
       cb.className='cbadge connected';
       ct.textContent=`● Live · ${d.count} stocks`;
-      // Load full data
-      await loadStocks(d);
+      // Load full data only when server data has changed
+      if(d.last_updated !== lastUpdated) await loadStocks(d);
     }
 
     // Mode strip
@@ -692,6 +693,7 @@ async function loadStocks(statusData){
       renderPlan();
     }
 
+    lastUpdated = d.last_updated;
     refreshCountdown = 300; // 5 min
   } catch(e){ console.error('Load stocks error:',e); }
 }
