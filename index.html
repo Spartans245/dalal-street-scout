@@ -482,11 +482,11 @@ td{padding:11px 13px;font-size:13px;white-space:nowrap;}
 </div>
 
 <!-- MODAL (scanner detail) -->
-<div class="mov" id="mov" onclick="if(event.target===this)this.classList.remove('open')">
+<div class="mov" id="mov" onclick="if(event.target===this)closeDetail()">
   <div class="modal">
     <div class="mhdr">
       <div><div class="mtitle" id="mTitle"></div><div class="msub" id="mSub"></div></div>
-      <button class="mcls" onclick="document.getElementById('mov').classList.remove('open')">✕</button>
+      <button class="mcls" onclick="closeDetail()">✕</button>
     </div>
     <div class="mbody" id="mBody"></div>
   </div>
@@ -688,7 +688,7 @@ async function loadStocks(statusData){
       dataLoaded=true;
       renderAll();
     } else {
-      renderTable();
+      if(!isModalOpen()) renderTable();
       renderPlan();
     }
 
@@ -793,6 +793,14 @@ function renderCompare(){
 }
 
 // ── MODAL ─────────────────────────────────────────────
+function isModalOpen(){
+  return document.getElementById('mov').classList.contains('open')||
+         document.getElementById('wlMov').classList.contains('open');
+}
+function closeDetail(){
+  document.getElementById('mov').classList.remove('open');
+  renderTable();
+}
 function openDetail(ticker){
   const s=allStocks.find(x=>x.ticker===ticker);if(!s)return;
   const tgt=(s.price*1.275).toFixed(2),sl=(s.price*0.91).toFixed(2),pt=(s.price*1.15).toFixed(2);
