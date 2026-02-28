@@ -573,7 +573,7 @@ const API = '/api';
 // ── STATE ────────────────────────────────────────────
 let allStocks  = [];
 let prevStocks = [];
-let watchlist  = JSON.parse(localStorage.getItem('dss4_wl')||'[]');
+let watchlist  = (()=>{try{return JSON.parse(localStorage.getItem('dss4_wl')||'[]');}catch(e){return [];}})();
 let sortState  = {col:'score',asc:false};
 let connected  = false;
 let serverStatus = 'starting';
@@ -764,47 +764,7 @@ function renderPlan(){
   `;
 }
 
-// ── TABLE ─────────────────────────────────────────────
-function renderTable(){
-  const min=parseInt(document.getElementById('minScore').value)||0;
-  const sec=document.getElementById('sectorFilter').value;
-  const show=document.getElementById('showFilter').value;
-  let s=allStocks.filter(x=>x.score>=min);
-  if(sec!=='all')s=s.filter(x=>x.sector===sec);
-  if(show==='strong')s=s.filter(x=>x.score>=70);
-  if(show==='watch')s=s.filter(x=>x.score>=50&&x.score<70);
-  if(show==='macd')s=s.filter(x=>x.macd);
-  if(show==='golden')s=s.filter(x=>x.golden);
-  s.sort((a,b)=>{const dir=sortState.asc?1:-1,col=sortState.col;if(col==='name')return dir*a.ticker.localeCompare(b.ticker);return dir*(b[col]-a[col]);});
-  document.getElementById('resCount').textContent=s.length;
-  document.getElementById('passCount').textContent=allStocks.filter(x=>x.score>=70).length+' strong';
-  document.getElementById('tBody').innerHTML=s.map(x=>{
-    const diff=x.prevScore!==null?x.score-x.prevScore:null;
-    const dHtml=diff!==null?(diff>2?`<span class="dup">▲+${diff}</span>`:diff<-2?`<span class="ddn">▼${diff}</span>`:`<span style="font-family:var(--fm);font-size:10px;color:var(--muted)">—</span>`):`<span class="dnew">NEW</span>`;
-    return `<tr onclick="openDetail('${x.ticker}')">
-      <td><div class="tn">${x.ticker}</div><div class="ts">${x.sector}</div></td>
-      <td><div class="sbadge ${x.score>=70?'sh':x.score>=50?'sm':'sl2'}">${x.score}</div></td>
-      <td class="mono">₹${x.price.toLocaleString('en-IN')}${serverStatus==='live'?'<span class="tag tlive" style="margin-left:4px;font-size:8px">●</span>':''}</td>
-      <td class="${x.change>=0?'up':'dn'} mono">${x.change>=0?'+':''}${x.change}%</td>
-      <td class="mono">${x.pe?x.pe+'x':'—'}</td>
-      <td class="mono">${parseInt(x.mcap).toLocaleString('en-IN')}</td>
-      <td>
-        <span class="tag ${x.pledging===0?'tg':x.pledging<5?'ty':'tr'}">${x.pledging===0?'No Pledge':'Pledge '+x.pledging+'%'}</span>
-        <span class="tag ${x.debtEq<0.7?'tg':x.debtEq<1?'ty':'tr'}">D/E ${x.debtEq}</span>
-        ${x.roeWarn==='high'?'<span class="tag tg" title="ROE>20%">ROE✓</span>':x.roeWarn==='medium'?'<span class="tag tgr" title="ROE 12-20%">ROE~</span>':'<span class="tag tr" title="ROE<12%">ROE⚠</span>'}
-      </td>
-      <td>
-        ${x.emaSignal==='cross'?'<span class="tag tg" title="14 EMA crossed 50 EMA — breakout starting">🔀 EMA×</span>':x.emaSignal==='trend'?'<span class="tag tb" title="14 EMA above 50 EMA — uptrend">📈 EMA↑</span>':''}
-        ${x.rsi>=45&&x.rsi<=58?'<span class="tag tg" title="RSI 45-58: coiling pre-breakout">RSI '+x.rsi+' 🎯</span>':x.rsi>58&&x.rsi<=65?'<span class="tag ty">RSI '+x.rsi+'</span>':x.rsi>65?'<span class="tag tr" title="Overbought — already ran">RSI '+x.rsi+' ⚠</span>':'<span class="tag tgr">RSI '+x.rsi+'</span>'}
-        ${x.consolidating?'<span class="tag tg" title="Tight range — coiling for breakout">📦 COIL</span>':''}
-        ${x.near52High?'<span class="tag ty" title="Within 8% of 52W high">🎯 52W</span>':''}
-        ${x.adx>=20&&x.adx<=35?'<span class="tag tg">ADX '+x.adx+'</span>':x.adx>35?'<span class="tag ty">ADX '+x.adx+'</span>':'<span class="tag tgr">ADX '+x.adx+'</span>'}
-        ${x.volContract&&x.volExpand?'<span class="tag tg" title="Vol contracted then expanded">VOL✓</span>':x.volContract?'<span class="tag tgr" title="Volume drying up — setup forming">VOL↓</span>':''}
-      </td>
-      <td>${dHtml}</td>
-    </tr>`;
-  }).join('');
-}
+// ── TABLE — defined later (with Strategy Playground newScore column) ──
 function srt(col){if(sortState.col===col)sortState.asc=!sortState.asc;else{sortState.col=col;sortState.asc=false;}renderTable();}
 
 // ── COMPARE ───────────────────────────────────────────
@@ -879,25 +839,7 @@ function openDetail(ticker){
 // ── WATCHLIST ─────────────────────────────────────────
 function addWL(){const v=document.getElementById('wlIn').value.trim().toUpperCase();if(!v||watchlist.includes(v))return;watchlist.push(v);localStorage.setItem('dss4_wl',JSON.stringify(watchlist));document.getElementById('wlIn').value='';renderWL();}
 function rmWL(t){watchlist=watchlist.filter(x=>x!==t);localStorage.setItem('dss4_wl',JSON.stringify(watchlist));renderWL();}
-function renderWL(){
-  const b=document.getElementById('wlBody');
-  if(!watchlist.length){b.innerHTML=`<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--muted);font-family:var(--fm);font-size:12px">No stocks added yet</td></tr>`;return;}
-  b.innerHTML=watchlist.map(t=>{
-    const s=allStocks.find(x=>x.ticker===t);
-    if(!s)return`<tr><td><div class="tn">${t}</div><div class="ts">Not in scan range yet</div></td><td colspan="6" style="color:var(--muted);font-family:var(--fm);font-size:11px">Will appear once server scans it</td><td><button class="btn btn-ghost btn-sm" onclick="rmWL('${t}')">✕</button></td></tr>`;
-    const tgt=(s.price*1.275).toFixed(2),sl=(s.price*0.91).toFixed(2);
-    return`<tr onclick="openDetail('${t}')" style="cursor:pointer">
-      <td><div class="tn">${t}</div><div class="ts">${s.sector}</div></td>
-      <td><div class="sbadge ${s.score>=70?'sh':s.score>=50?'sm':'sl2'}">${s.score}</div></td>
-      <td class="mono">₹${s.price.toLocaleString('en-IN')}</td>
-      <td class="${s.change>=0?'up':'dn'} mono">${s.change>=0?'+':''}${s.change}%</td>
-      <td class="mono" style="color:var(--green)">₹${parseFloat(tgt).toLocaleString('en-IN')}</td>
-      <td class="mono" style="color:var(--red)">₹${parseFloat(sl).toLocaleString('en-IN')}</td>
-      <td><span class="tag ${s.score>=70?'tg':s.score>=50?'ty':'tr'}">${s.score>=70?'✅ Entry':s.score>=50?'⚠️ Watch':'❌ Skip'}</span></td>
-      <td onclick="event.stopPropagation()"><button class="btn btn-ghost btn-sm" onclick="rmWL('${t}')">✕</button></td>
-    </tr>`;
-  }).join('');
-}
+// renderWL defined later (with openWLDetail for full chart modal)
 
 // ── NEWS ──────────────────────────────────────────────
 function generateNews(){
@@ -1218,6 +1160,7 @@ function drawMiniChart(s) {
   canvas.height = 120;
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
   const pad = { t:10, b:10, l:8, r:8 };
   const cw = W - pad.l - pad.r;
   const ch = H - pad.t - pad.b;

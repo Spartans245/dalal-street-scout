@@ -713,7 +713,14 @@ def main():
 """)
     t = threading.Thread(target=scheduler, daemon=True)
     t.start()
-    server = HTTPServer(('0.0.0.0', PORT), Handler)
+    try:
+        server = HTTPServer(('0.0.0.0', PORT), Handler)
+    except OSError:
+        print(f"\n  ❌ Port {PORT} is already in use!")
+        print(f"  Another instance is probably running.")
+        print(f"  Close it first, then restart.")
+        input("\n  Press Enter to exit...")
+        sys.exit(1)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
