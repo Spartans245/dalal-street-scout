@@ -1,5 +1,6 @@
 # Auto-generated cache — do not commit (rebuilds on first run)
 cache.json
+tickers_cache.json
 
 # Python
 __pycache__/
@@ -21,3 +22,22 @@ Thumbs.db
 
 # Claude Code
 .claude/
+
+# Logs
+*.log
+
+# Backups
+*.backup.*
+
+# Dev / debug utilities (not part of product)
+check_cache.py
+check_wake.ps1
+explain_score.py
+find_ante.py
+momentum_check.py
+tmp_check.py
+stages_chart.html
+
+# Internal docs
+DATA_FLOW.md
+ISSUES_AND_FIXES.md
