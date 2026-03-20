@@ -25,6 +25,9 @@ except Exception:
     pass
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
+class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
 from urllib.parse import urlparse
 
 # ── Auto-install ─────────────────────────────────────────────────────
@@ -55,30 +58,38 @@ PORT               = 5000
 MCAP_MIN_CR        = 1         # include all stocks with valid MCap data
 MCAP_MAX_CR        = 9_999_999 # no upper limit — frontend segments by MCap
 LIVE_REFRESH       = 5 * 60   # seconds between price refreshes
-SCAN_WORKERS       = 8        # parallel workers for full scan
-BATCH_DELAY        = 1.0      # seconds between stocks (legacy — unused by parallel scan)
-CACHE_MAX_AGE_HRS  = 24
-TICKER_CACHE_DAYS  = 15       # refresh MCap-filtered ticker list every N days
+INFO_WORKERS       = 1        # sequential .info calls — concurrent requests cause yf to return incomplete data (missing marketCap, PE)
+INFO_DELAY         = 0.5      # seconds between each .info call (~2700 tickers × 0.5s ≈ 22 min full scan)
+HIST_DELAY         = 0.2      # seconds between each history fetch (~2700 tickers × 0.2s ≈ 9 min technicals)
+CACHE_MAX_AGE_HRS  = 720   # monthly — technical/fundamental refreshes keep data fresh daily/weekly
+TICKER_CACHE_DAYS  = 30       # refresh MCap-filtered ticker list every N days (aligned with monthly full scan)
+FUND_REFRESH_DAYS  = 7        # refresh PE/D/E/ROE/sector/name every N days
 
 # ════════════════════════════════════════════════════════════════════
 # STATE
 # ════════════════════════════════════════════════════════════════════
 state = {
-    'stocks':         [],
-    'last_updated':   None,
-    'status':         'starting',
-    'market_mode':    'unknown',
-    'fetch_progress': 0,
-    'fetch_message':  'Starting...',
-    'total_scanned':  0,
-    'in_range':       0,
+    'stocks':           [],
+    'last_updated':     None,
+    'status':           'starting',
+    'market_mode':      'unknown',
+    'fetch_progress':   0,
+    'fetch_message':    'Starting...',
+    'total_scanned':    0,
+    'in_range':         0,
+    'fund_refreshed_at': None,
+    'cache_saved_at':   None,
     'ctrl': {
         'ticker_fetch': {'last_run': None, 'nse_count': 0, 'sme_count': 0},
         'ticker_list':  {'last_run': None, 'total_in_range': 0},
         'price_update': {'last_run': None, 'updated': 0, 'elapsed_sec': 0.0,
-                         'workers': 5, 'batches': 0, 'batch_size': 100, 'running': False},
-        'technicals':   {'last_run': None, 'elapsed_sec': 0.0, 'workers': 8,
+                         'batches': 0, 'stocks_received': 0, 'running': False},
+        'technicals':   {'last_run': None, 'elapsed_sec': 0.0,
+                         'tickers': 0, 'updated': 0, 'running': False},
+        'fundamentals': {'last_run': None, 'elapsed_sec': 0.0,
                          'yahoo_calls': 0, 'updated': 0, 'running': False},
+        'full_scan':    {'last_run': None, 'elapsed_sec': 0.0,
+                         'tickers': 0, 'stocks_ok': 0, 'failed': 0},
     },
 }
 state_lock = threading.Lock()
@@ -347,6 +358,9 @@ def calc_technicals(hist):
         vpb_score        = 0
         vpb_detail       = 'none'   # coiling | breakout | weak_breakout | distribution | vol_only
         vpb_range_height = 0.0
+        avg20_base       = 0.0
+        price_coiling    = False
+        vol_shrinking    = False
         try:
             if ('High' in hist.columns and 'Low' in hist.columns and
                     'Volume' in hist.columns and len(hist) >= 25):
@@ -433,6 +447,9 @@ def calc_technicals(hist):
             'vpb_score':          vpb_score,
             'vpb_detail':         vpb_detail,
             'vpb_range_height':   vpb_range_height,
+            'avg20_vol':          float(avg20_base),
+            'price_coiling':      price_coiling,
+            'vol_shrinking':      vol_shrinking,
             'near_52high':        near_52high,
         }
     except Exception as e:
@@ -553,48 +570,6 @@ def calc_target(price, mm_target, wk52h, ath):
 # ════════════════════════════════════════════════════════════════════
 TICKER_CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tickers_cache.json')
 
-def _check_mcap_only(ticker):
-    """MCap check via info['marketCap'] (no history). Returns {ticker, mcap} or None.
-    fast_info.market_cap returns None for most NSE stocks — use info instead."""
-    try:
-        info = yf.Ticker(ticker + '.NS').info
-        mcap_raw = info.get('marketCap', 0) or 0
-        if not mcap_raw:
-            return None
-        mcap_cr = round(mcap_raw / 1e7, 0)
-        if MCAP_MIN_CR <= mcap_cr <= MCAP_MAX_CR:
-            return {'ticker': ticker, 'mcap': int(mcap_cr)}
-        return None
-    except:
-        return None
-
-def refresh_ticker_list():
-    """Fetch all NSE+SME tickers, MCap-filter, save tickers_cache.json. Runs every ~15 days."""
-    from concurrent.futures import ThreadPoolExecutor
-    print(f"\n  🔄 Building ticker list (MCap filter, runs every {TICKER_CACHE_DAYS} days)...")
-    all_tickers = get_nse_tickers()
-    print(f"  Checking MCap for {len(all_tickers)} tickers with {SCAN_WORKERS} workers...")
-    in_range = []
-    lock      = threading.Lock()
-    counter   = [0]
-    def _worker(ticker):
-        result = _check_mcap_only(ticker)
-        with lock:
-            counter[0] += 1
-            if result:
-                in_range.append(result)
-            if counter[0] % 200 == 0:
-                print(f"    ↻ MCap check: {counter[0]}/{len(all_tickers)}, in range: {len(in_range)}")
-    with ThreadPoolExecutor(max_workers=SCAN_WORKERS) as ex:
-        list(ex.map(_worker, all_tickers))
-    data = {'saved_at': get_ist().isoformat(), 'tickers': in_range}
-    with open(TICKER_CACHE_FILE, 'w') as f:
-        json.dump(data, f)
-    print(f"  ✅ Ticker cache saved: {len(in_range)} stocks in ₹{MCAP_MIN_CR}–{MCAP_MAX_CR} Cr range")
-    with state_lock:
-        state['ctrl']['ticker_list']['last_run']       = get_ist().isoformat()
-        state['ctrl']['ticker_list']['total_in_range'] = len(in_range)
-    return in_range
 
 def load_ticker_cache():
     """Load tickers_cache.json if < TICKER_CACHE_DAYS old. Returns list of {ticker,mcap} or None."""
@@ -608,6 +583,9 @@ def load_ticker_cache():
         if age_days > TICKER_CACHE_DAYS:
             print(f"  ⚠ Ticker cache is {age_days}d old (>{TICKER_CACHE_DAYS}d) — rebuilding")
             return None
+        if not data['tickers']:
+            print(f"  ⚠ Ticker cache is empty — rebuilding")
+            return None
         print(f"  ✅ Ticker cache: {len(data['tickers'])} stocks in MCap range (age: {age_days}d)")
         with state_lock:
             state['ctrl']['ticker_list']['last_run']       = data['saved_at']
@@ -617,62 +595,98 @@ def load_ticker_cache():
         print(f"  ⚠ Ticker cache load error: {e}")
         return None
 
-def _scan_one(ticker, prefiltered_mcap=None):
+def _scan_one(ticker, prefiltered_mcap=None, cached_fund=None, cached_hist=None):
     """Fetch and process a single ticker. Returns result dict or None.
-    If prefiltered_mcap is provided (from ticker cache), MCap check is skipped."""
+    If prefiltered_mcap is provided and non-zero (from ticker cache), MCap check is skipped.
+    If cached_fund is provided (fundamentals fresh), .info call is skipped entirely.
+    If cached_hist is provided (pre-downloaded batch history), .history() call is skipped."""
     ns = ticker.strip().replace(' ', '') + '.NS'
     try:
-        t    = yf.Ticker(ns)
-        info = t.info
+        if cached_fund is not None and cached_hist is not None:
+            # --- Fast path: all data provided (used by refresh_technicals) ---
+            hist = cached_hist
+            pe     = cached_fund['pe']
+            debtEq = cached_fund['debtEq']
+            roe    = cached_fund['roe']
+            sector = cached_fund['sector']
+            name   = cached_fund['name']
+            mcap_cr = prefiltered_mcap if prefiltered_mcap else cached_fund.get('mcap', 0)
 
-        # MCap check — skip if prefiltered from ticker cache
-        if prefiltered_mcap is not None:
-            mcap_cr = prefiltered_mcap
+            closes  = hist['Close'].ffill()
+            price   = round(float(closes.iloc[-1]), 2)
+            prev    = float(closes.iloc[-2]) if len(closes) > 1 else price
+            change  = round((price - prev) / prev * 100, 2) if prev else 0.0
+
+            highs = hist['High'].ffill().values
+            lows  = hist['Low'].ffill().values
+            wk52h = round(float(max(highs[-252:])) if len(highs) >= 252 else float(max(highs)), 2)
+            wk52l = round(float(min(lows[-252:]))  if len(lows)  >= 252 else float(min(lows)),  2)
+
+            avg_vol = float(hist['Volume'].tail(20).mean())
+            dvol    = round(avg_vol * price / 1e7, 1)
         else:
-            mcap_raw = info.get('marketCap', 0) or 0
-            mcap_cr  = round(mcap_raw / 1e7, 0)
-            if mcap_cr < MCAP_MIN_CR or mcap_cr > MCAP_MAX_CR:
+            # --- Full path: fetch history + .info from one Ticker object ---
+            time.sleep(INFO_DELAY)
+            t    = yf.Ticker(ns)
+            hist = t.history(period='5y', auto_adjust=True)
+            if hist is None or len(hist) < 30:
+                return None
+            info = t.info
+
+            # MCap check — skip if prefiltered with a real value (>0) from ticker cache
+            if prefiltered_mcap:
+                mcap_cr = prefiltered_mcap
+            else:
+                mcap_raw = info.get('marketCap', 0) or 0
+                if not mcap_raw:
+                    # Fallback: sharesOutstanding × last close price
+                    shares = info.get('sharesOutstanding', 0) or 0
+                    if shares:
+                        price_approx = float(hist['Close'].iloc[-1])
+                        mcap_raw = shares * price_approx
+                mcap_cr = round(mcap_raw / 1e7, 0)
+                # Only hard-exclude if MCap is known AND out of range
+                if mcap_cr > 0 and (mcap_cr < MCAP_MIN_CR or mcap_cr > MCAP_MAX_CR):
+                    return None
+
+            price = float(
+                info.get('currentPrice') or
+                info.get('regularMarketPrice') or
+                float(hist['Close'].iloc[-1])
+            )
+            if not price or math.isnan(price) or price <= 0:
                 return None
 
-        # Fetch 5-year history for technicals + ATH
-        hist = t.history(period='5y', auto_adjust=True)
-        if hist is None or len(hist) < 30:
-            return None
+            prev   = info.get('previousClose') or (float(hist['Close'].iloc[-2]) if len(hist) > 1 else price)
+            change = round((price - float(prev)) / float(prev) * 100, 2) if prev else 0.0
 
-        # Price
-        price = float(
-            info.get('currentPrice') or
-            info.get('regularMarketPrice') or
-            float(hist['Close'].iloc[-1])
-        )
+            pe = float(info.get('trailingPE') or info.get('forwardPE') or 0)
+            if math.isnan(pe): pe = 0.0
+            pe = round(pe, 1)
+
+            roe_r = float(info.get('returnOnEquity') or 0)
+            if math.isnan(roe_r): roe_r = 0.0
+            roe = round(roe_r * 100, 1)
+
+            deq_r = float(info.get('debtToEquity') or 0)
+            if math.isnan(deq_r): deq_r = 0.0
+            debtEq = round(deq_r / 100, 2)
+
+            avg_vol = info.get('averageVolume', 0) or 0
+            dvol    = round(avg_vol * price / 1e7, 1)
+
+            wk52h  = float(info.get('fiftyTwoWeekHigh') or 0)
+            wk52l  = float(info.get('fiftyTwoWeekLow')  or 0)
+
+            sector = info.get('sector') or 'Others'
+            name   = info.get('longName') or info.get('shortName') or ticker
+
         if not price or math.isnan(price) or price <= 0:
             return None
 
-        prev   = info.get('previousClose') or (float(hist['Close'].iloc[-2]) if len(hist) > 1 else price)
-        change = round((price - float(prev)) / float(prev) * 100, 2) if prev else 0.0
-
-        pe = float(info.get('trailingPE') or info.get('forwardPE') or 0)
-        if math.isnan(pe): pe = 0.0
-        pe = round(pe, 1)
-
-        roe_r = float(info.get('returnOnEquity') or 0)
-        if math.isnan(roe_r): roe_r = 0.0
-        roe = round(roe_r * 100, 1)
-
-        deq_r = float(info.get('debtToEquity') or 0)
-        if math.isnan(deq_r): deq_r = 0.0
-        debtEq = round(deq_r / 100, 2)
-
-        avg_vol = info.get('averageVolume', 0) or 0
-        dvol    = round(avg_vol * price / 1e7, 1)
-
-        wk52h  = float(info.get('fiftyTwoWeekHigh') or 0)
-        wk52l  = float(info.get('fiftyTwoWeekLow')  or 0)
         pct52h = round((price - wk52h) / wk52h * 100, 1) if wk52h else 0
         pct52l = round((price - wk52l) / wk52l * 100, 1) if wk52l else 0
-
-        sector = info.get('sector') or 'Others'
-        name   = info.get('longName') or info.get('shortName') or ticker
+        roe_warn = 'high' if roe > 20 else 'medium' if roe > 12 else 'low' if roe > 0 else 'na'
 
         tech = calc_technicals(hist)
 
@@ -689,7 +703,6 @@ def _scan_one(ticker, prefiltered_mcap=None):
         target_price, target_type, upside_pct, upside_rs = calc_target(price, mm_target, wk52h, ath)
 
         sc, f, c, t2, ct2, l = score(pe, debtEq, roe, dvol, tech)
-        roe_warn = 'high' if roe > 20 else 'medium' if roe > 12 else 'low' if roe > 0 else 'na'
 
         chart_prices, chart_dates = [], []
         try:
@@ -731,6 +744,10 @@ def _scan_one(ticker, prefiltered_mcap=None):
             'golden':          tech['golden']             if tech else False,
             'vpbScore':        tech['vpb_score']          if tech else 0,
             'vpbDetail':       tech['vpb_detail']         if tech else 'none',
+            'vpbRangeHeight':  tech['vpb_range_height']   if tech else 0.0,
+            'avg20Vol':        tech['avg20_vol']           if tech else 0.0,
+            'priceCoiling':    tech['price_coiling']       if tech else False,
+            'volShrinking':    tech['vol_shrinking']       if tech else False,
             'near52High':      tech['near_52high']        if tech else False,
             'stage':           classify_stage(tech),
             'catalysts':       [],
@@ -758,27 +775,40 @@ def fetch_all_stocks():
     import threading
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
+    _t0 = time.time()
     with state_lock:
         state['status']         = 'fetching'
         state['fetch_progress'] = 0
         state['fetch_message']  = 'Loading ticker list...'
         state['in_range']       = 0
 
-    # Load pre-filtered ticker list from cache (refreshed every 15 days)
-    ticker_items = load_ticker_cache()
-    if ticker_items is None:
-        ticker_items = refresh_ticker_list()
+    # Always fetch fresh ticker list from NSE — this is a full scan
+    # tickers_cache.json used only as fallback if NSE is unreachable
+    raw = get_nse_tickers()
+    if raw:
+        ticker_items = [{'ticker': t, 'mcap': 0} for t in raw]
+        print(f"  ✅ NSE ticker list fetched: {len(ticker_items)} tickers")
+    else:
+        ticker_items = load_ticker_cache() or []
+        print(f"  ⚠ NSE unreachable — falling back to cached list ({len(ticker_items)} tickers)")
 
     total = len(ticker_items)
 
     with state_lock:
         state['total_scanned'] = total
-        state['fetch_message'] = f'Scanning {total} in-range stocks with {SCAN_WORKERS} workers...'
+        state['fetch_message'] = f'Scanning {total} in-range stocks (sequential .info)...'
 
     print(f"\n{'='*60}")
     print(f"  Scanning {total} pre-filtered stocks  ₹{MCAP_MIN_CR}–{MCAP_MAX_CR} Cr MCap")
-    print(f"  Workers: {SCAN_WORKERS}")
+    print(f"  Mode: sequential — history + .info per ticker ({INFO_DELAY}s delay)")
     print(f"{'='*60}\n")
+
+    # Full rescan: sequential per-ticker fetch — history + info from same Ticker object,
+    # no batch downloads (yf.download silently drops NSE tickers, reducing coverage)
+    print(f"  🔄 Full rescan — sequential history + .info per ticker ({INFO_DELAY}s delay)")
+
+    with state_lock:
+        state['fetch_message'] = f'Scanning {total} stocks sequentially ({INFO_DELAY}s/ticker)...'
 
     results      = []
     results_lock = threading.Lock()
@@ -794,7 +824,6 @@ def fetch_all_stocks():
                 results.append(result)
                 star = '⭐' if result['score'] >= 65 else '  '
                 print(f"  ✅ {result['ticker']:<16} ₹{result['price']:>9,.2f}  Score:{result['score']:>3}  {star}")
-            # Update progress every 50 completions
             n = counter[0]
             if n % 50 == 0:
                 pct = int(n / total * 100)
@@ -803,21 +832,41 @@ def fetch_all_stocks():
                     state['fetch_message']  = f'Scanning {n} of {total}  ({len(results)} found)'
                     state['in_range']       = len(results)
 
-    with ThreadPoolExecutor(max_workers=SCAN_WORKERS) as ex:
+    with ThreadPoolExecutor(max_workers=INFO_WORKERS) as ex:
         list(ex.map(worker, ticker_items))
 
     ist    = get_ist()
     strong = [s for s in results if s['score'] >= 65]
 
+    # Safety: if scan returned suspiciously few results (likely rate-limited),
+    # keep the old state and do NOT overwrite cache
+    fail_rate = counter[1] / total if total else 0
+    if len(results) == 0 or fail_rate > 0.90:
+        print(f"\n⚠ SCAN ABORTED — {counter[1]}/{total} failures ({fail_rate:.0%}) — likely rate-limited.")
+        print(f"  Cache NOT overwritten. Keeping previous data.")
+        with state_lock:
+            state['fetch_progress'] = 100
+            state['fetch_message']  = f'⚠ Rate-limited — {counter[1]}/{total} failed. Previous data kept.'
+            state['status']         = 'eod'
+        return
+
     with state_lock:
-        state['stocks']         = results
-        state['last_updated']   = ist.strftime('%d %b %Y, %I:%M %p IST')
-        state['market_mode']    = get_market_mode()
-        state['status']         = 'live' if get_market_mode() == 'open' else 'eod'
-        state['fetch_progress'] = 100
-        state['fetch_message']  = f'Done — {len(results)} stocks in range'
-        state['in_range']       = len(results)
-        state['total_scanned']  = total
+        state['stocks']           = results
+        state['last_updated']     = ist.strftime('%d %b %Y, %I:%M %p IST')
+        state['market_mode']      = get_market_mode()
+        state['status']           = 'live' if get_market_mode() == 'open' else 'eod'
+        state['fetch_progress']   = 100
+        state['fetch_message']    = f'Done — {len(results)} stocks in range'
+        state['in_range']         = len(results)
+        state['total_scanned']    = total
+        state['fund_refreshed_at'] = ist.isoformat()
+        state['ctrl']['full_scan'].update({
+            'last_run':    ist.isoformat(),
+            'elapsed_sec': round(time.time() - _t0, 1),
+            'tickers':     total,
+            'stocks_ok':   len(results),
+            'failed':      counter[1],
+        })
 
     print(f"\n{'='*60}")
     print(f"  ✅ {len(results)} stocks in ₹{MCAP_MIN_CR}–{MCAP_MAX_CR} Cr range")
@@ -831,7 +880,7 @@ def fetch_all_stocks():
         ticker_data = [{'ticker': s['ticker'], 'mcap': s['mcap']} for s in results]
         cache_data  = {'saved_at': get_ist().isoformat(), 'tickers': ticker_data}
         with open(TICKER_CACHE_FILE, 'w') as f:
-            json.dump(cache_data, f)
+            f.write(_safe_json(cache_data))
         with state_lock:
             state['ctrl']['ticker_list']['last_run']       = get_ist().isoformat()
             state['ctrl']['ticker_list']['total_in_range'] = len(ticker_data)
@@ -844,6 +893,9 @@ def fetch_all_stocks():
 # ════════════════════════════════════════════════════════════════════
 def refresh_prices():
     with state_lock:
+        if state.get('status') == 'fetching':
+            print("  ⏭️  Skipping price refresh — full scan in progress")
+            return
         stocks = list(state['stocks'])
     if not stocks:
         return
@@ -852,36 +904,57 @@ def refresh_prices():
     with state_lock:
         state['ctrl']['price_update']['running'] = True
 
-    BATCH_SIZE  = 100
-    MAX_WORKERS = 5
+    BATCH_SIZE  = 50
+    MAX_WORKERS = 3
 
     tickers_ns = [s['ticker'] + '.NS' for s in stocks]
     batches    = [tickers_ns[i:i+BATCH_SIZE] for i in range(0, len(tickers_ns), BATCH_SIZE)]
     print(f"  🔄 Refreshing {len(stocks)} prices ({len(batches)} batches × {MAX_WORKERS} workers)...")
 
-    # Shared dict: ticker_ns -> (price, prev_close)
+    # Shared dict: ticker_ns -> (price, prev_close, today_high, today_low, today_vol)
     price_map = {}
     import threading
     map_lock  = threading.Lock()
 
     def fetch_batch(batch):
-        try:
-            data = yf.download(batch, period='5d', interval='1d',
-                               auto_adjust=True, progress=False, threads=False)
-            if data.empty:
+        for attempt in range(2):
+            try:
+                data = yf.download(batch, period='5d', interval='1d',
+                                   auto_adjust=True, progress=False, threads=False)
+                if data.empty:
+                    return
+                # yfinance returns MultiIndex columns when batch > 1, Series when batch == 1
+                multi = len(batch) > 1
+                def _col(name, ticker):
+                    try:
+                        s = data[name][ticker] if multi else data[name]
+                        return s.dropna()
+                    except:
+                        return None
+                for ticker in batch:
+                    try:
+                        c_vals = _col('Close',  ticker)
+                        if c_vals is None or len(c_vals) < 2:
+                            continue
+                        h_vals = _col('High',   ticker)
+                        l_vals = _col('Low',    ticker)
+                        v_vals = _col('Volume', ticker)
+                        with map_lock:
+                            price_map[ticker] = (
+                                float(c_vals.iloc[-1]),
+                                float(c_vals.iloc[-2]),
+                                float(h_vals.iloc[-1]) if h_vals is not None and len(h_vals) > 0 else 0.0,
+                                float(l_vals.iloc[-1]) if l_vals is not None and len(l_vals) > 0 else 0.0,
+                                float(v_vals.iloc[-1]) if v_vals is not None and len(v_vals) > 0 else 0.0,
+                            )
+                    except:
+                        pass
                 return
-            close = data['Close']  # MultiIndex → DataFrame with tickers as columns
-            for ticker in batch:
-                try:
-                    vals = close[ticker].dropna()
-                    if len(vals) < 2:
-                        continue
-                    with map_lock:
-                        price_map[ticker] = (float(vals.iloc[-1]), float(vals.iloc[-2]))
-                except:
-                    pass
-        except Exception as e:
-            print(f"  ⚠ Batch failed: {e}")
+            except Exception as e:
+                if attempt == 0:
+                    print(f"  ⚠ Batch failed (retrying): {e}")
+                else:
+                    print(f"  ✗ Batch failed after retry: {e}")
 
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
@@ -893,42 +966,81 @@ def refresh_prices():
         if ns not in price_map:
             continue
         try:
-            price, prev = price_map[ns]
+            price, prev, today_high, today_low, today_vol = price_map[ns]
             if math.isnan(price):
                 continue
             prev   = prev or s['price']
             change = round((price - prev) / prev * 100, 2) if prev else s['change']
             s['price']  = round(price, 2)
             s['change'] = change
-            # Update upside from live price
-            wk52h = s.get('wk52High') or 0
-            t_price = s.get('targetPrice')
-            if not t_price and wk52h and float(wk52h) > price:
-                t_price = round(float(wk52h), 2)
-                s['targetPrice'] = t_price
-                s['targetType']  = '52W'
-            if t_price and float(t_price) > price:
-                s['upsidePct'] = round((float(t_price) - price) / price * 100, 1)
-                s['upsideRs']  = round(float(t_price) - price, 2)
             # Recalculate price-derived fields
+            wk52h = s.get('wk52High') or 0
             wk52l = s.get('wk52Low') or 0
             if wk52h:
                 s['pctFrom52High'] = round((price - wk52h) / wk52h * 100, 1)
                 s['near52High']    = price >= wk52h * 0.92
             if wk52l:
                 s['pctFrom52Low']  = round((price - wk52l) / wk52l * 100, 1)
-            # Recalculate score with updated near52High
+            # VPB intraday recalculation — recompute trigger using live vol/candle
+            avg20 = s.get('avg20Vol', 0.0)
+            if avg20 > 0 and today_high > today_low > 0:
+                vol_ratio = today_vol / (avg20 + 1e-10)
+                close_pos = (price - today_low) / (today_high - today_low + 1e-10)
+                pc = s.get('priceCoiling', False)
+                vs = s.get('volShrinking', False)
+                vpb_score, vpb_detail = 0, 'none'
+                if pc and vs:
+                    if vol_ratio >= 2.0 and close_pos >= 0.7:
+                        vpb_score, vpb_detail = 10, 'breakout'
+                    elif vol_ratio >= 1.5 and close_pos >= 0.6:
+                        vpb_score, vpb_detail = 7, 'breakout'
+                    elif vol_ratio >= 1.5 and close_pos < 0.3:
+                        vpb_score, vpb_detail = -2, 'distribution'
+                    elif vol_ratio < 1.0:
+                        vpb_score, vpb_detail = 3, 'coiling'
+                    else:
+                        vpb_score, vpb_detail = 5, 'weak_breakout'
+                elif vol_ratio >= 2.0 and close_pos >= 0.7:
+                    vpb_score, vpb_detail = 4, 'vol_only'
+                elif pc:
+                    vpb_score, vpb_detail = 2, 'coiling'
+                s['vpbScore']  = vpb_score
+                s['vpbDetail'] = vpb_detail
+                # Reclassify stage with updated VPB
+                stage_tech = {
+                    'ema_cross':           s.get('emaCross', False),
+                    'ema_pre_cross':       s.get('emaPreCross', False),
+                    'ema_post_cross':      s.get('emaPostCross', False),
+                    'ema_pullback':        s.get('emaPullback', False),
+                    'ema_trend':           s.get('emaTrend', False),
+                    'vol_confirmed_cross': s.get('volConfirm', False),
+                    'vpb_detail':          vpb_detail,
+                    'vpb_score':           vpb_score,
+                }
+                s['stage'] = classify_stage(stage_tech)
+            # Recalculate MM target and upside from live price
+            vpb_rh    = s.get('vpbRangeHeight', 0.0)
+            mm_target = round(price + vpb_rh, 2) if vpb_rh > 0 else None
+            s['mmTarget'] = mm_target
+            t_price, t_type, upside_pct, upside_rs = calc_target(
+                price, mm_target, s.get('wk52High', 0), s.get('ath', 0)
+            )
+            s['targetPrice'] = t_price
+            s['targetType']  = t_type
+            s['upsidePct']   = upside_pct
+            s['upsideRs']    = upside_rs
+            # Recalculate score with updated VPB and near52High
             tech = {
                 'rsi':                s.get('rsi'),
                 'ema_cross':          s.get('emaCross'),
+                'ema_pre_cross':      s.get('emaPreCross', False),
                 'ema_trend':          s.get('emaTrend'),
                 'vol_confirmed_cross':s.get('volConfirm'),
                 'cross_score':        s.get('crossScore', 0),
                 'ema_pullback':       s.get('emaPullback', False),
                 'adx':                s.get('adx'),
-                'vol_contract':       s.get('volContract'),
-                'vol_expand':         s.get('volExpand'),
-                'consolidating':      s.get('consolidating'),
+                'vpb_score':          s.get('vpbScore', 0),
+                'vpb_detail':         s.get('vpbDetail', 'none'),
                 'near_52high':        s.get('near52High'),
                 'macd':               s.get('macd'),
                 'golden':             s.get('golden'),
@@ -953,13 +1065,14 @@ def refresh_prices():
     print(f"  ✅ {updated} prices updated at {ist.strftime('%H:%M:%S')} IST")
     with state_lock:
         state['ctrl']['price_update'].update({
-            'last_run':   get_ist().isoformat(),
-            'updated':    updated,
-            'elapsed_sec': round(time.time() - _t0, 1),
-            'workers':    MAX_WORKERS,
-            'batches':    len(batches),
-            'batch_size': BATCH_SIZE,
-            'running':    False,
+            'last_run':        get_ist().isoformat(),
+            'updated':         updated,
+            'elapsed_sec':     round(time.time() - _t0, 1),
+            'workers':         MAX_WORKERS,
+            'batches':         len(batches),
+            'batch_size':      BATCH_SIZE,
+            'stocks_received': len(price_map),
+            'running':         False,
         })
 
 # ════════════════════════════════════════════════════════════════════
@@ -967,8 +1080,6 @@ def refresh_prices():
 # ════════════════════════════════════════════════════════════════════
 def refresh_technicals():
     import threading
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-
     with state_lock:
         stocks = list(state['stocks'])
     if not stocks:
@@ -978,92 +1089,172 @@ def refresh_technicals():
     with state_lock:
         state['ctrl']['technicals']['running'] = True
 
-    print(f"\n  📐 EOD: Refreshing technicals for {len(stocks)} stocks (parallel, {SCAN_WORKERS} workers)...")
-    updated_count = [0]
-    counter = [0]
-    results_lock = threading.Lock()
-
-    # Build a dict keyed by ticker for fast lookup
+    total            = len(stocks)
     stocks_by_ticker = {s['ticker']: s for s in stocks}
+    updated          = 0
+    done             = 0
+    print(f"\n  📐 EOD: Refreshing technicals for {total} stocks (sequential history fetch)...")
 
-    def _refresh_one(s):
+    for s in stocks:
+        ns = s['ticker'] + '.NS'
         try:
-            hist = yf.Ticker(s['ticker'] + '.NS').history(period='1y', auto_adjust=True)
+            time.sleep(HIST_DELAY)
+            hist = yf.Ticker(ns).history(period='1y', auto_adjust=True)
             if hist is None or len(hist) < 30:
-                return None
+                done += 1
+                continue
+
             tech = calc_technicals(hist)
             if not tech:
-                return None
+                done += 1
+                continue
 
-            updates = {}
-            updates['rsi']          = tech['rsi']
-            updates['macd']         = tech['macd']
-            updates['emaSignal']    = tech['ema_signal']
-            updates['emaCross']     = tech['ema_cross']
-            updates['emaCrossDays'] = tech['ema_cross_days_ago']
-            updates['emaTrend']     = tech['ema_trend']
-            updates['volConfirm']   = tech['vol_confirmed_cross']
-            updates['crossScore']   = tech['cross_score']
-            updates['emaPreCross']  = tech['ema_pre_cross']
-            updates['emaPostCross'] = tech['ema_post_cross']
-            updates['emaPullback']  = tech['ema_pullback']
-            updates['golden']       = tech['golden']
-            updates['adx']          = tech['adx']
-            updates['vpbScore']     = tech['vpb_score']
-            updates['vpbDetail']    = tech['vpb_detail']
-            updates['near52High']   = tech['near_52high']
-            updates['stage']        = classify_stage(tech)
-            # Recompute MM target and upside from fresh history
             vpb_rh    = tech.get('vpb_range_height', 0.0)
             mm_target = round(s['price'] + vpb_rh, 2) if vpb_rh > 0 else None
-            updates['mmTarget'] = mm_target
             target_price, target_type, upside_pct, upside_rs = calc_target(
                 s['price'], mm_target, s.get('wk52High', 0), s.get('ath', 0)
             )
-            updates['targetPrice'] = target_price
-            updates['targetType']  = target_type
-            updates['upsidePct']   = upside_pct
-            updates['upsideRs']    = upside_rs
-            # update chart data
             h60 = hist.tail(60)
-            updates['chartDates']  = [d.strftime('%Y-%m-%d') for d in h60.index]
-            updates['chartPrices'] = [round(float(p), 2) for p in h60['Close'].values]
-            # recalculate score
             sc, f, c, t, ct, l = score(s.get('pe'), s.get('debtEq'), s.get('roe'), s.get('dailyVol'), tech)
-            updates['score']   = sc
-            updates['fScore']  = f
-            updates['cScore']  = c
-            updates['tScore']  = t
-            updates['ctScore'] = ct
-            updates['lScore']  = l
-            return (s['ticker'], updates)
-        except:
-            return None
-
-    def worker(s):
-        result = _refresh_one(s)
-        with results_lock:
-            counter[0] += 1
-            if result is not None:
-                updated_count[0] += 1
-                ticker, updates = result
-                stocks_by_ticker[ticker].update(updates)
-            if counter[0] % 100 == 0:
-                print(f"    ↻ technicals: {counter[0]}/{len(stocks)} done, {updated_count[0]} updated")
-
-    with ThreadPoolExecutor(max_workers=SCAN_WORKERS) as ex:
-        list(ex.map(worker, stocks))
+            s.update({
+                'rsi':            tech['rsi'],
+                'macd':           tech['macd'],
+                'emaSignal':      tech['ema_signal'],
+                'emaCross':       tech['ema_cross'],
+                'emaCrossDays':   tech['ema_cross_days_ago'],
+                'emaTrend':       tech['ema_trend'],
+                'volConfirm':     tech['vol_confirmed_cross'],
+                'crossScore':     tech['cross_score'],
+                'emaPreCross':    tech['ema_pre_cross'],
+                'emaPostCross':   tech['ema_post_cross'],
+                'emaPullback':    tech['ema_pullback'],
+                'golden':         tech['golden'],
+                'adx':            tech['adx'],
+                'vpbScore':       tech['vpb_score'],
+                'vpbDetail':      tech['vpb_detail'],
+                'vpbRangeHeight': tech['vpb_range_height'],
+                'avg20Vol':       tech['avg20_vol'],
+                'priceCoiling':   tech['price_coiling'],
+                'volShrinking':   tech['vol_shrinking'],
+                'near52High':     tech['near_52high'],
+                'stage':          classify_stage(tech),
+                'mmTarget':       mm_target,
+                'targetPrice':    target_price,
+                'targetType':     target_type,
+                'upsidePct':      upside_pct,
+                'upsideRs':       upside_rs,
+                'chartDates':     [d.strftime('%Y-%m-%d') for d in h60.index],
+                'chartPrices':    [round(float(p), 2) for p in h60['Close'].values],
+                'score':          sc,
+                'fScore':         f,
+                'cScore':         c,
+                'tScore':         t,
+                'ctScore':        ct,
+                'lScore':         l,
+            })
+            updated += 1
+        except Exception:
+            pass
+        done += 1
+        if done % 100 == 0:
+            print(f"    ↻ technicals: {done}/{total} done, {updated} updated")
 
     with state_lock:
         state['stocks'] = list(stocks_by_ticker.values())
-    print(f"  ✅ EOD technicals refreshed for {updated_count[0]} stocks")
+    print(f"  ✅ EOD technicals refreshed for {updated} stocks")
     with state_lock:
         state['ctrl']['technicals'].update({
             'last_run':    get_ist().isoformat(),
             'elapsed_sec': round(time.time() - _t0, 1),
-            'workers':     SCAN_WORKERS,
-            'yahoo_calls': counter[0],
-            'updated':     updated_count[0],
+            'tickers':     total,
+            'updated':     updated,
+            'running':     False,
+        })
+
+# ════════════════════════════════════════════════════════════════════
+# FUNDAMENTAL REFRESH (PE / D/E / ROE / Sector / Name — weekly)
+# ════════════════════════════════════════════════════════════════════
+def refresh_fundamentals():
+    with state_lock:
+        stocks = list(state['stocks'])
+    if not stocks:
+        return
+
+    _t0    = time.time()
+    total  = len(stocks)
+    done   = 0
+    updated = 0
+    with state_lock:
+        state['ctrl']['fundamentals']['running'] = True
+    print(f"\n  🔄 Refreshing fundamentals for {total} stocks (sequential, {INFO_DELAY}s delay)...")
+
+    for s in stocks:
+        time.sleep(INFO_DELAY)
+        try:
+            ns   = s['ticker'] + '.NS'
+            info = yf.Ticker(ns).info
+            pe   = float(info.get('trailingPE') or info.get('forwardPE') or 0)
+            if math.isnan(pe): pe = 0.0
+            roe_r = float(info.get('returnOnEquity') or 0)
+            if math.isnan(roe_r): roe_r = 0.0
+            deq_r = float(info.get('debtToEquity') or 0)
+            if math.isnan(deq_r): deq_r = 0.0
+            s['pe']      = round(pe, 1)
+            s['roe']     = round(roe_r * 100, 1)
+            s['debtEq']  = round(deq_r / 100, 2)
+            s['sector']  = info.get('sector') or s.get('sector', 'Others')
+            s['name']    = info.get('longName') or info.get('shortName') or s.get('name', s['ticker'])
+            mcap_raw = info.get('marketCap', 0) or 0
+            if not mcap_raw:
+                shares = info.get('sharesOutstanding', 0) or 0
+                if shares:
+                    mcap_raw = shares * s.get('price', 0)
+            if mcap_raw:
+                s['mcap'] = int(round(mcap_raw / 1e7, 0))
+            wk52h = float(info.get('fiftyTwoWeekHigh') or 0)
+            wk52l = float(info.get('fiftyTwoWeekLow')  or 0)
+            if wk52h: s['wk52High'] = round(wk52h, 2)
+            if wk52l: s['wk52Low']  = round(wk52l, 2)
+            tech = {
+                'rsi':                s.get('rsi'),
+                'ema_cross':          s.get('emaCross'),
+                'ema_pre_cross':      s.get('emaPreCross', False),
+                'ema_trend':          s.get('emaTrend'),
+                'vol_confirmed_cross':s.get('volConfirm'),
+                'cross_score':        s.get('crossScore', 0),
+                'ema_pullback':       s.get('emaPullback', False),
+                'adx':                s.get('adx'),
+                'vpb_score':          s.get('vpbScore', 0),
+                'vpb_detail':         s.get('vpbDetail', 'none'),
+                'near_52high':        s.get('near52High'),
+                'macd':               s.get('macd'),
+                'golden':             s.get('golden'),
+            } if s.get('rsi') is not None else None
+            sc, f, c, t, ct, l = score(s['pe'], s['debtEq'], s['roe'], s.get('dailyVol', 0), tech)
+            s['score']   = sc
+            s['fScore']  = f
+            s['roeWarn'] = 'high' if s['roe'] > 20 else 'medium' if s['roe'] > 12 else 'low' if s['roe'] > 0 else 'na'
+            updated += 1
+        except:
+            pass
+        done += 1
+        if done % 100 == 0:
+            print(f"    ↻ fundamentals: {done}/{total} done, {updated} updated")
+
+    ist = get_ist()
+    with state_lock:
+        state['stocks']            = stocks
+        state['last_updated']      = ist.strftime('%d %b %Y, %I:%M %p IST')
+        state['fund_refreshed_at'] = ist.isoformat()
+    save_cache()
+    elapsed = round(time.time() - _t0, 1)
+    print(f"  ✅ Fundamentals refreshed: {updated}/{total} updated in {elapsed}s")
+    with state_lock:
+        state['ctrl']['fundamentals'].update({
+            'last_run':    ist.isoformat(),
+            'elapsed_sec': elapsed,
+            'yahoo_calls': done,
+            'updated':     updated,
             'running':     False,
         })
 
@@ -1076,12 +1267,14 @@ def save_cache():
     try:
         with state_lock:
             data = {
-                'stocks':       state['stocks'],
-                'last_updated': state['last_updated'],
-                'saved_at':     get_ist().isoformat(),
+                'stocks':           state['stocks'],
+                'last_updated':     state['last_updated'],
+                'saved_at':         get_ist().isoformat(),
+                'fund_refreshed_at': state.get('fund_refreshed_at'),
+                'ctrl':             state['ctrl'],
             }
         with open(CACHE_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False)
+            f.write(_safe_json(data))
         print(f"  💾 Cache saved — {len(data['stocks'])} stocks → {CACHE_FILE}")
     except Exception as e:
         print(f"  ⚠ Cache save failed: {e}")
@@ -1120,15 +1313,22 @@ def load_cache():
             except:
                 pass
         print(f"  🔄 Stages re-classified for {len(stocks)} stocks")
+        saved_ctrl = data.get('ctrl') or {}
         with state_lock:
-            state['stocks']         = stocks
-            state['last_updated']   = data.get('last_updated','From cache')
-            state['market_mode']    = get_market_mode()
+            state['stocks']            = stocks
+            state['last_updated']      = data.get('last_updated','From cache')
+            state['cache_saved_at']    = data.get('saved_at')
+            state['fund_refreshed_at'] = data.get('fund_refreshed_at')
+            state['market_mode']       = get_market_mode()
             state['status']         = 'live' if get_market_mode()=='open' else 'eod'
             state['fetch_progress'] = 100
             state['fetch_message']  = f'Loaded {len(stocks)} stocks from cache'
             state['in_range']       = len(stocks)
             state['total_scanned']  = len(stocks)
+            # Restore ctrl metrics, keeping defaults for any missing keys
+            for section, vals in saved_ctrl.items():
+                if section in state['ctrl'] and isinstance(vals, dict):
+                    state['ctrl'][section].update(vals)
         print(f"  🚀 Cache loaded — {len(stocks)} stocks (age: {age_hours:.1f}h)")
         return True
     except Exception as e:
@@ -1148,8 +1348,23 @@ def scheduler():
             print(f"  Market already open — refreshing prices...")
             refresh_prices()
         else:
-            print(f"  Pre-market: refreshing technicals (RSI/EMA/ADX) before open...")
-            refresh_technicals()
+            # Skip pre-market tech refresh if EOD already ran today (cache saved after 3:30 PM)
+            with state_lock:
+                raw_saved = state.get('cache_saved_at')
+            eod_already_ran = False
+            if raw_saved:
+                try:
+                    saved = datetime.datetime.fromisoformat(raw_saved)
+                    today = get_ist().date()
+                    eod_already_ran = (saved.date() == today and
+                                       saved.hour * 60 + saved.minute >= 15 * 60 + 30)
+                except:
+                    pass
+            if eod_already_ran:
+                print(f"  Pre-market: EOD refresh already ran today — skipping tech refresh.")
+            else:
+                print(f"  Pre-market: refreshing technicals (RSI/EMA/ADX) before open...")
+                refresh_technicals()
     else:
         print(f"  Starting full NSE scan (~45-90 min)...")
         fetch_all_stocks()
@@ -1175,13 +1390,27 @@ def scheduler():
                 state['status'] = 'eod'
 
 # ════════════════════════════════════════════════════════════════════
+# JSON HELPERS
+# ════════════════════════════════════════════════════════════════════
+def _safe_json(data):
+    """Serialize to JSON, converting numpy scalars and fixing Infinity/NaN."""
+    import numpy as np
+    class _Enc(json.JSONEncoder):
+        def default(self, o):
+            if isinstance(o, np.bool_):    return bool(o)
+            if isinstance(o, np.integer):  return int(o)
+            if isinstance(o, np.floating): return float(o)
+            return super().default(o)
+    return json.dumps(data, cls=_Enc, ensure_ascii=False).replace('Infinity', 'null').replace('NaN', 'null')
+
+# ════════════════════════════════════════════════════════════════════
 # HTTP SERVER
 # ════════════════════════════════════════════════════════════════════
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args): pass  # suppress request logs
 
     def send_json(self, data, status=200):
-        body = json.dumps(data, ensure_ascii=False).replace('Infinity', 'null').replace('NaN', 'null').encode('utf-8')
+        body = _safe_json(data).encode('utf-8')
         self.send_response(status)
         self.send_header('Content-Type',   'application/json')
         self.send_header('Content-Length', len(body))
@@ -1216,7 +1445,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == '/api/status':
             with state_lock:
-                self.send_json({
+                data = {
                     'status':         state['status'],
                     'market_mode':    state['market_mode'],
                     'last_updated':   state['last_updated'],
@@ -1226,28 +1455,32 @@ class Handler(BaseHTTPRequestHandler):
                     'in_range':       state['in_range'],
                     'count':          len(state['stocks']),
                     'ist_time':       get_ist().strftime('%H:%M:%S'),
-                })
+                }
+            self.send_json(data)
             return
 
         if path == '/api/stocks':
             with state_lock:
-                self.send_json({
+                data = {
                     'status':       state['status'],
                     'market_mode':  state['market_mode'],
                     'last_updated': state['last_updated'],
-                    'stocks':       state['stocks'],
-                })
+                    'stocks':       list(state['stocks']),
+                }
+            self.send_json(data)
             return
 
         if path == '/api/prices':
             with state_lock:
-                prices = [{'ticker':s['ticker'],'price':s['price'],'change':s['change']}
-                          for s in state['stocks']]
-                self.send_json({
-                    'status':       state['status'],
-                    'last_updated': state['last_updated'],
-                    'prices':       prices,
-                })
+                prices       = [{'ticker':s['ticker'],'price':s['price'],'change':s['change']}
+                                 for s in state['stocks']]
+                status       = state['status']
+                last_updated = state['last_updated']
+            self.send_json({
+                'status':       status,
+                'last_updated': last_updated,
+                'prices':       prices,
+            })
             return
 
         if path.startswith('/api/stock/'):
@@ -1295,7 +1528,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == '/api/ctrl':
             with state_lock:
-                self.send_json(state['ctrl'])
+                data = dict(state['ctrl'])
+            self.send_json(data)
             return
 
         if path == '/api/ctrl/run_prices':
@@ -1327,6 +1561,19 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({'ok': True, 'msg': 'Technical refresh started'})
             return
 
+        if path == '/api/ctrl/run_fundamentals':
+            with state_lock:
+                running   = state['ctrl']['fundamentals'].get('running', False)
+                no_stocks = len(state['stocks']) == 0
+            if running:
+                self.send_json({'ok': False, 'msg': 'Fundamental refresh already running'})
+            elif no_stocks:
+                self.send_json({'ok': False, 'msg': 'No stocks loaded yet'})
+            else:
+                threading.Thread(target=refresh_fundamentals, daemon=True).start()
+                self.send_json({'ok': True, 'msg': 'Fundamental refresh started'})
+            return
+
         if path == '/api/ctrl/run_ticker_fetch':
             # Ticker cache is built from a full scan — standalone MCap check is unreliable
             with state_lock:
@@ -1347,9 +1594,14 @@ class Handler(BaseHTTPRequestHandler):
                 result = {}
                 for sym, name in [('^NSEI','NIFTY 50'),('^BSESN','SENSEX')]:
                     tk = yf.Ticker(sym)
-                    fi = tk.fast_info
-                    last  = fi.last_price or 0
-                    prev  = fi.previous_close or last
+                    try:
+                        fi = tk.fast_info
+                        last  = fi.last_price or 0
+                        prev  = fi.previous_close or last
+                    except Exception:
+                        hist = tk.history(period='2d')
+                        last = float(hist['Close'].iloc[-1]) if not hist.empty else 0
+                        prev = float(hist['Close'].iloc[-2]) if len(hist) > 1 else last
                     chg   = round((last - prev) / prev * 100, 2) if prev else 0
                     result[name] = {'price': round(last, 2), 'change': chg}
                 self.send_json(result)
@@ -1374,7 +1626,7 @@ def main():
     t = threading.Thread(target=scheduler, daemon=True)
     t.start()
     try:
-        server = HTTPServer(('0.0.0.0', PORT), Handler)
+        server = ThreadingHTTPServer(('0.0.0.0', PORT), Handler)
     except OSError:
         print(f"\n  ❌ Port {PORT} is already in use!")
         print(f"  Another instance is probably running.")
