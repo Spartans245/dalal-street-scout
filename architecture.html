@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dalal Street Scout — Architecture</title>
+<style>
+  :root {
+    --bg: #eef0f7; --s1: #ffffff; --s2: #f5f6fa; --border: #d4d8e8;
+    --text: #1a1f36; --muted: #4a5270; --muted2: #8890aa;
+    --green: #15803d; --gold: #b45309; --blue: #2563eb;
+    --red: #dc2626; --purple: #7c3aed; --orange: #c2710c;
+    --fm: 'JetBrains Mono', 'Courier New', monospace; --fh: 'Inter', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--fm); font-size: 12px; padding: 32px; }
+  h1 { font-size: 18px; letter-spacing: 2px; color: var(--blue); margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 11px; margin-bottom: 32px; letter-spacing: 1px; }
+
+  /* FLOW */
+  .flow { display: flex; flex-direction: column; align-items: center; gap: 0; margin-bottom: 40px; }
+  .arrow-v { width: 2px; height: 28px; background: var(--border); margin: 0 auto; position: relative; }
+  .arrow-v::after { content:'▼'; position:absolute; bottom:-10px; left:50%; transform:translateX(-50%); color:var(--muted); font-size:10px; }
+  .arrow-label { font-size: 9px; color: var(--muted2); text-align: center; margin: -8px 0 -4px; letter-spacing: 0.5px; }
+
+  .row { display: flex; align-items: stretch; gap: 12px; width: 100%; max-width: 1100px; }
+  .row.center { justify-content: center; }
+
+  .box {
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 14px 16px; background: var(--s1); flex: 1;
+  }
+  .box.blue  { border-color: #2563eb; background: rgba(37,99,235,0.06); }
+  .box.green { border-color: #15803d; background: rgba(21,128,61,0.06); }
+  .box.gold  { border-color: #b45309; background: rgba(180,83,9,0.06); }
+  .box.purple{ border-color: #7c3aed; background: rgba(124,58,237,0.06); }
+  .box.red   { border-color: #dc2626; background: rgba(220,38,38,0.06); }
+  .box.grey  { border-color: var(--border); background: var(--s2); }
+
+  .box-title { font-size: 10px; letter-spacing: 1.5px; font-weight: bold; margin-bottom: 10px; }
+  .blue .box-title  { color: var(--blue); }
+  .green .box-title { color: var(--green); }
+  .gold .box-title  { color: var(--gold); }
+  .purple .box-title{ color: var(--purple); }
+  .red .box-title   { color: var(--red); }
+  .grey .box-title  { color: var(--muted); }
+
+  .item { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 5px; font-size: 11px; color: var(--muted); line-height: 1.5; }
+  .item .dot { width: 5px; height: 5px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+  .dot.g { background: var(--green); }
+  .dot.b { background: var(--blue); }
+  .dot.o { background: var(--orange); }
+  .dot.p { background: var(--purple); }
+  .dot.r { background: var(--red); }
+  .dot.m { background: var(--muted2); }
+  .item strong { color: var(--text); }
+
+  /* SPLIT ARROWS */
+  .split-arrows {
+    display: flex; width: 100%; max-width: 1100px;
+    align-items: flex-start; gap: 0; position: relative; margin: 0;
+  }
+  .split-line {
+    height: 28px; border-left: 2px solid var(--border);
+    border-bottom: 2px solid var(--border); flex: 1;
+    position: relative;
+  }
+  .split-line.right { border-left: none; border-right: 2px solid var(--border); }
+  .split-line.center { border-left: none; border-right: none; border-bottom: none; border-top: 2px solid var(--border); }
+  .split-down {
+    display: flex; width: 100%; max-width: 1100px; gap: 12px;
+  }
+  .split-down .col { flex: 1; display: flex; flex-direction: column; align-items: center; }
+  .split-down .col .arrow-v { margin: 0; }
+
+  /* MERGE ARROWS */
+  .merge { display: flex; width: 100%; max-width: 1100px; gap: 12px; }
+  .merge .col { flex: 1; display: flex; flex-direction: column; align-items: center; }
+
+  /* FILE TREE */
+  .filetree { font-size: 11px; line-height: 1.8; color: var(--muted); }
+  .filetree .dir  { color: var(--blue); }
+  .filetree .file { color: var(--text); }
+  .filetree .note { color: var(--muted2); font-size: 10px; }
+
+  /* DECISIONS TABLE */
+  .decisions { width: 100%; max-width: 1100px; border-collapse: collapse; margin-bottom: 40px; }
+  .decisions th { background: var(--s2); color: var(--muted); font-size: 10px; letter-spacing: 1px; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  .decisions td { padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 11px; color: var(--muted); vertical-align: top; }
+  .decisions td:first-child { color: var(--text); white-space: nowrap; }
+  .decisions tr:hover td { background: var(--s1); }
+  .tick { color: var(--green); }
+
+  /* UNIVERSE TABLE */
+  .uni { width: 100%; border-collapse: collapse; }
+  .uni th { color: var(--muted); font-size: 10px; letter-spacing: 1px; padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  .uni td { padding: 6px 10px; font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--border); }
+  .uni td:first-child { color: var(--text); }
+  .num { color: var(--green); font-weight: bold; }
+
+  h2 { font-size: 12px; letter-spacing: 2px; color: var(--muted); margin: 36px 0 14px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+
+  .badge { display: inline-block; padding: 1px 7px; border-radius: 3px; font-size: 9px; letter-spacing: 0.5px; font-weight: bold; margin-left: 6px; }
+  .badge.daily  { background: rgba(37,99,235,0.12); color: var(--blue); border: 1px solid #2563eb; }
+  .badge.weekly { background: rgba(180,83,9,0.12);  color: var(--gold); border: 1px solid #b45309; }
+  .badge.5min   { background: rgba(21,128,61,0.12); color: var(--green); border: 1px solid #15803d; }
+  .badge.manual { background: rgba(124,58,237,0.12);color: var(--purple);border: 1px solid #7c3aed; }
+
+  .thread-box { display: flex; gap: 8px; margin-top: 8px; }
+  .thread { flex: 1; background: var(--s2); border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px; font-size: 10px; }
+  .thread .t-title { color: var(--gold); font-size: 9px; letter-spacing: 1px; margin-bottom: 4px; }
+  .thread .t-item { color: var(--muted); margin-bottom: 2px; }
+
+  .sep { width: 100%; max-width: 1100px; border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+</style>
+</head>
+<body>
+
+<h1>DALAL STREET SCOUT — SYSTEM ARCHITECTURE</h1>
+<div class="sub">Updated 2026-03-22 &nbsp;·&nbsp; Kite Connect primary &nbsp;·&nbsp; NSE universe source of truth &nbsp;·&nbsp; Claude Haiku on-demand AI analysis</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>DATA FLOW</h2>
+<div class="flow">
+
+  <!-- TRIGGERS -->
+  <div class="row">
+    <div class="box purple" style="flex:0 0 220px">
+      <div class="box-title">TASK SCHEDULER</div>
+      <div class="item"><div class="dot p"></div><div><strong>7:30 AM</strong> Mon–Fri → orchestrator.py <span class="badge daily">DAILY</span></div></div>
+      <div class="item"><div class="dot p"></div><div>WakeToRun = True</div></div>
+    </div>
+    <div class="box purple" style="flex:0 0 220px">
+      <div class="box-title">SERVER — MANUAL TRIGGER</div>
+      <div class="item"><div class="dot p"></div><div>UI button → server spawns orchestrator.py <span class="badge manual">MANUAL</span></div></div>
+      <div class="item"><div class="dot p"></div><div>subprocess.Popen — non-blocking</div></div>
+    </div>
+    <div class="box grey" style="flex:1">
+      <div class="box-title">ORCHESTRATOR.PY — PIPELINE CONTROLLER</div>
+      <div class="item"><div class="dot b"></div><div>Step 1 <span class="badge weekly">WEEKLY</span> &nbsp;→ nse_worker.py --universe (download ticker list)</div></div>
+      <div class="item"><div class="dot b"></div><div>Step 2 <span class="badge daily">DAILY</span> &nbsp;&nbsp;→ kite_worker.py --scan (OHLCV full scan)</div></div>
+      <div class="item"><div class="dot b"></div><div>Step 3 <span class="badge weekly">WEEKLY</span> &nbsp;→ nse_worker.py --fundamentals (PE, MCap, sector)</div></div>
+      <div class="item"><div class="dot b"></div><div>Step 4 <span class="badge weekly">WEEKLY</span> &nbsp;→ yf_worker.py (D/E, ROE fallback)</div></div>
+      <div class="item"><div class="dot b"></div><div>Step 5 <span class="badge daily">DAILY</span> &nbsp;&nbsp;→ compute.py (run all formulas)</div></div>
+      <div class="item"><div class="dot m"></div><div>Each step: checks exit code → proceeds or aborts → reads status JSON for detail</div></div>
+    </div>
+  </div>
+
+  <div class="arrow-v"></div>
+
+  <!-- WORKERS -->
+  <div class="row">
+    <div class="box blue">
+      <div class="box-title">KITE WORKER &nbsp;<span class="badge daily">DAILY SCAN</span></div>
+      <div class="thread-box">
+        <div class="thread">
+          <div class="t-title">THREAD 1 — FULL SCAN</div>
+          <div class="t-item">· instruments('NSE') → token map</div>
+          <div class="t-item">· historical_data() — 193 days OHLCV</div>
+          <div class="t-item">· ltp() — live price per stock</div>
+          <div class="t-item">· ~2,550 stocks · ~15 min</div>
+          <div class="t-item">· writes → data/raw/kite.json</div>
+        </div>
+        <div class="thread">
+          <div class="t-title">THREAD 2 — PRICE REFRESH <span class="badge 5min">5 MIN</span></div>
+          <div class="t-item">· Market hours only (9:15–3:30)</div>
+          <div class="t-item">· Batch ltp() — 500 stocks/call</div>
+          <div class="t-item">· Updates price, change, stage,</div>
+          <div class="t-item">&nbsp;&nbsp;upsidePct in computed/stocks.json</div>
+          <div class="t-item">· Bypasses orchestrator entirely</div>
+        </div>
+      </div>
+    </div>
+    <div class="box green">
+      <div class="box-title">NSE WORKER &nbsp;<span class="badge weekly">WEEKLY</span></div>
+      <div class="item"><div class="dot g"></div><div><strong>--universe</strong> mode: EQUITY_L.csv + SME Emerge API → ticker list (~2,750)</div></div>
+      <div class="item"><div class="dot g"></div><div><strong>--fundamentals</strong> mode: quote-equity per stock → PE, MCap, sector, name</div></div>
+      <div class="item"><div class="dot g"></div><div>NSE session with cookie refresh · 0.3s delay</div></div>
+      <div class="item"><div class="dot g"></div><div>writes → data/raw/nse.json</div></div>
+    </div>
+    <div class="box gold">
+      <div class="box-title">YAHOO WORKER &nbsp;<span class="badge weekly">WEEKLY</span></div>
+      <div class="item"><div class="dot o"></div><div>Best-effort D/E, ROE for ~1,400 stocks</div></div>
+      <div class="item"><div class="dot o"></div><div>yf.Ticker.info — sequential · 0.5s delay</div></div>
+      <div class="item"><div class="dot o"></div><div>Stocks without data → null (not excluded)</div></div>
+      <div class="item"><div class="dot o"></div><div>writes → data/raw/yf.json</div></div>
+    </div>
+  </div>
+
+  <div class="arrow-v"></div>
+
+  <!-- RAW STAGING -->
+  <div class="row">
+    <div class="box grey">
+      <div class="box-title">RAW STAGING &nbsp;·&nbsp; data/raw/</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:4px">
+        <div>
+          <div style="color:var(--blue);font-size:10px;margin-bottom:4px">kite.json (~43MB)</div>
+          <div class="item"><div class="dot b"></div><div>193d OHLCV per stock</div></div>
+          <div class="item"><div class="dot b"></div><div>live price + change</div></div>
+          <div class="item"><div class="dot b"></div><div>2,550 stocks</div></div>
+        </div>
+        <div>
+          <div style="color:var(--green);font-size:10px;margin-bottom:4px">nse.json (~0.6MB)</div>
+          <div class="item"><div class="dot g"></div><div>ticker universe list</div></div>
+          <div class="item"><div class="dot g"></div><div>PE, MCap, sector, name</div></div>
+          <div class="item"><div class="dot g"></div><div>2,750 stocks</div></div>
+        </div>
+        <div>
+          <div style="color:var(--gold);font-size:10px;margin-bottom:4px">yf.json (~0.1MB)</div>
+          <div class="item"><div class="dot o"></div><div>D/E ratio, ROE</div></div>
+          <div class="item"><div class="dot o"></div><div>~1,400 stocks</div></div>
+          <div class="item"><div class="dot o"></div><div>null where unavailable</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-v"></div>
+
+  <!-- COMPUTE -->
+  <div class="row">
+    <div class="box red">
+      <div class="box-title">COMPUTE.PY — ALL FORMULAS</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:4px">
+        <div>
+          <div style="color:var(--muted);font-size:10px;margin-bottom:4px">MERGE</div>
+          <div class="item"><div class="dot r"></div><div>Join kite + nse + yf by ticker</div></div>
+          <div class="item"><div class="dot r"></div><div>Universe from nse.json</div></div>
+          <div class="item"><div class="dot r"></div><div>Flag stocks with no Kite data</div></div>
+        </div>
+        <div>
+          <div style="color:var(--muted);font-size:10px;margin-bottom:4px">TECHNICALS (shared/technicals.py)</div>
+          <div class="item"><div class="dot r"></div><div>RSI, EMA signals, MACD</div></div>
+          <div class="item"><div class="dot r"></div><div>ADX, VPB suite, Golden Cross</div></div>
+          <div class="item"><div class="dot r"></div><div>38W High, ATH(9M), MM Target</div></div>
+        </div>
+        <div>
+          <div style="color:var(--muted);font-size:10px;margin-bottom:4px">ENRICHMENT + SCORING</div>
+          <div class="item"><div class="dot r"></div><div>Sector median PE → peVsSector</div></div>
+          <div class="item"><div class="dot r"></div><div>F score (PE vs sector)</div></div>
+          <div class="item"><div class="dot r"></div><div>T score, Signal score, Stage</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-v"></div>
+
+  <!-- COMPUTED STAGING -->
+  <div class="row">
+    <div class="box grey">
+      <div class="box-title">COMPUTED STAGING &nbsp;·&nbsp; data/computed/stocks.json</div>
+      <div class="item"><div class="dot m"></div><div>Final enriched stock data — UI-ready · ~2.5MB · written once per pipeline run</div></div>
+      <div class="item"><div class="dot m"></div><div>Also written to by Kite Thread 2 every 5 min (price + change + stage + upsidePct only)</div></div>
+    </div>
+  </div>
+
+  <div class="arrow-v"></div>
+
+  <!-- SERVER + UI -->
+  <div class="row">
+    <div class="box purple" style="flex: 0 0 280px">
+      <div class="box-title">SERVER.PY — HTTP ONLY</div>
+      <div class="item"><div class="dot p"></div><div>GET /api/stocks → reads computed/stocks.json</div></div>
+      <div class="item"><div class="dot p"></div><div>GET /api/status → reads data/status/*.json</div></div>
+      <div class="item"><div class="dot p"></div><div>GET /api/rescan → spawns orchestrator.py</div></div>
+      <div class="item"><div class="dot p"></div><div>POST /api/analyze/&lt;ticker&gt; → calls AI agent</div></div>
+      <div class="item"><div class="dot p"></div><div>No computation · no data fetching</div></div>
+    </div>
+    <div class="box grey" style="flex:1">
+      <div class="box-title">STATUS FILES &nbsp;·&nbsp; data/status/</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:4px">
+        <div>
+          <div style="color:var(--blue);font-size:10px;margin-bottom:3px">kite.json</div>
+          <div class="item"><div class="dot b"></div><div>status, count</div></div>
+          <div class="item"><div class="dot b"></div><div>duration, errors</div></div>
+          <div class="item"><div class="dot b"></div><div>saved_at</div></div>
+        </div>
+        <div>
+          <div style="color:var(--green);font-size:10px;margin-bottom:3px">nse.json</div>
+          <div class="item"><div class="dot g"></div><div>status, count</div></div>
+          <div class="item"><div class="dot g"></div><div>duration, errors</div></div>
+          <div class="item"><div class="dot g"></div><div>saved_at</div></div>
+        </div>
+        <div>
+          <div style="color:var(--gold);font-size:10px;margin-bottom:3px">yf.json</div>
+          <div class="item"><div class="dot o"></div><div>status, count</div></div>
+          <div class="item"><div class="dot o"></div><div>duration, errors</div></div>
+          <div class="item"><div class="dot o"></div><div>saved_at</div></div>
+        </div>
+        <div>
+          <div style="color:var(--red);font-size:10px;margin-bottom:3px">compute.json</div>
+          <div class="item"><div class="dot r"></div><div>status, count</div></div>
+          <div class="item"><div class="dot r"></div><div>duration, errors</div></div>
+          <div class="item"><div class="dot r"></div><div>saved_at</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="box green" style="flex: 0 0 160px">
+      <div class="box-title">UI (index.html)</div>
+      <div class="item"><div class="dot g"></div><div>Reads /api/stocks</div></div>
+      <div class="item"><div class="dot g"></div><div>Reads /api/status</div></div>
+      <div class="item"><div class="dot g"></div><div>Trigger manual scan</div></div>
+      <div class="item"><div class="dot g"></div><div>RUN ANALYSIS → AI verdict</div></div>
+      <div class="item"><div class="dot g"></div><div>Phone + desktop</div></div>
+    </div>
+  </div>
+
+  <div class="arrow-v"></div>
+
+  <!-- AI AGENT — ON-DEMAND FLOW -->
+  <div class="row">
+    <div class="box grey" style="flex:0 0 200px;opacity:0.35;border-style:dashed">
+      <div class="box-title" style="color:var(--muted2)">MAIN PIPELINE</div>
+      <div class="item"><div class="dot m"></div><div style="color:var(--muted2)">Always-on · batch · scheduled</div></div>
+      <div class="item"><div class="dot m"></div><div style="color:var(--muted2)">(described above)</div></div>
+    </div>
+    <div style="display:flex;align-items:center;padding:0 16px;color:var(--muted2);font-size:10px;letter-spacing:1px">VS</div>
+    <div class="box" style="flex:1;border-color:#7c3aed;background:rgba(124,58,237,0.04)">
+      <div class="box-title" style="color:var(--purple)">ON-DEMAND AI ANALYSIS &nbsp;<span class="badge manual">PER CLICK</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-top:4px">
+        <div>
+          <div style="color:var(--purple);font-size:10px;margin-bottom:4px">① TRIGGER</div>
+          <div class="item"><div class="dot p"></div><div>User clicks <strong>⚡ RUN ANALYSIS</strong> in stock modal</div></div>
+          <div class="item"><div class="dot p"></div><div>POST /api/analyze/&lt;ticker&gt;</div></div>
+          <div class="item"><div class="dot p"></div><div>server.py routes to agent</div></div>
+        </div>
+        <div>
+          <div style="color:var(--purple);font-size:10px;margin-bottom:4px">② CONTEXT BUILD</div>
+          <div class="item"><div class="dot p"></div><div>sr_analysis_agent.py</div></div>
+          <div class="item"><div class="dot p"></div><div>Pulls stock from memory</div></div>
+          <div class="item"><div class="dot p"></div><div>Computes stop, R:R, S/R stats</div></div>
+          <div class="item"><div class="dot p"></div><div>Serialises to JSON context</div></div>
+        </div>
+        <div>
+          <div style="color:var(--purple);font-size:10px;margin-bottom:4px">③ LLM CALL</div>
+          <div class="item"><div class="dot p"></div><div><strong>Claude Haiku 4.5</strong></div></div>
+          <div class="item"><div class="dot p"></div><div>claude-haiku-4-5-20251001</div></div>
+          <div class="item"><div class="dot p"></div><div>System prompt + context</div></div>
+          <div class="item"><div class="dot p"></div><div>max_tokens 600 · ~1–2s</div></div>
+        </div>
+        <div>
+          <div style="color:var(--purple);font-size:10px;margin-bottom:4px">④ RESPONSE</div>
+          <div class="item"><div class="dot p"></div><div>JSON: risk / reward</div></div>
+          <div class="item"><div class="dot p"></div><div>verdict / playbook</div></div>
+          <div class="item"><div class="dot p"></div><div>Rendered in modal</div></div>
+          <div class="item"><div class="dot p"></div><div>Live-refreshes with price</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<hr class="sep">
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>FILE STRUCTURE</h2>
+<div class="row" style="max-width:1100px">
+  <div class="box grey" style="flex:1">
+    <div class="filetree">
+      <div><span class="dir">d:/Dalal_street/</span></div>
+      <div>&nbsp;&nbsp;├── <span class="file">orchestrator.py</span> &nbsp;<span class="note">← pipeline controller</span></div>
+      <div>&nbsp;&nbsp;├── <span class="file">compute.py</span> &nbsp;<span class="note">← all formulas, merges raw sources</span></div>
+      <div>&nbsp;&nbsp;├── <span class="file">server.py</span> &nbsp;<span class="note">← HTTP only, no computation</span></div>
+      <div>&nbsp;&nbsp;├── <span class="file">kite_worker.py</span> &nbsp;<span class="note">← OHLCV + live prices (2 threads)</span></div>
+      <div>&nbsp;&nbsp;├── <span class="file">nse_worker.py</span> &nbsp;<span class="note">← universe + fundamentals</span></div>
+      <div>&nbsp;&nbsp;├── <span class="file">yf_worker.py</span> &nbsp;<span class="note">← D/E, ROE fallback</span></div>
+      <div>&nbsp;&nbsp;├── <span class="file">kite_auth.py</span> &nbsp;<span class="note">← daily OAuth token refresh</span></div>
+      <div>&nbsp;&nbsp;├── <span class="file">kite_config.json</span> &nbsp;<span class="note">← api_key, api_secret</span></div>
+      <div>&nbsp;&nbsp;├── <span class="file">kite_token.json</span> &nbsp;<span class="note">← daily access token</span></div>
+      <div>&nbsp;&nbsp;├── <span class="dir">shared/</span></div>
+      <div>&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└── <span class="file">technicals.py</span> &nbsp;<span class="note">← pure math: RSI, EMA, ADX, VPB, score, calc_target, enrich_sector_pe</span></div>
+      <div>&nbsp;&nbsp;├── <span class="dir">agents/</span> &nbsp;<span class="note">← on-demand LLM agents (on-demand, not part of pipeline)</span></div>
+      <div>&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└── <span class="file">sr_analysis_agent.py</span> &nbsp;<span class="note">← Risk/Reward AI analysis · Claude Haiku · called by server.py POST /api/analyze/&lt;ticker&gt;</span></div>
+      <div>&nbsp;&nbsp;├── <span class="dir">data/</span></div>
+      <div>&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├── <span class="dir">raw/</span></div>
+      <div>&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├── <span class="file">kite.json</span> &nbsp;<span class="note">← 193d OHLCV + price, ~43MB, 2,550 stocks</span></div>
+      <div>&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├── <span class="file">nse.json</span> &nbsp;<span class="note">← universe + PE, MCap, sector, ~0.6MB, 2,750 stocks</span></div>
+      <div>&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└── <span class="file">yf.json</span> &nbsp;<span class="note">← D/E, ROE, ~0.1MB, ~1,400 stocks</span></div>
+      <div>&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├── <span class="dir">computed/</span></div>
+      <div>&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└── <span class="file">stocks.json</span> &nbsp;<span class="note">← final enriched, UI-ready, ~2.5MB</span></div>
+      <div>&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└── <span class="dir">status/</span></div>
+      <div>&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── <span class="file">kite.json</span> &nbsp;<span class="note">← exit code, count, duration, errors</span></div>
+      <div>&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── <span class="file">nse.json</span></div>
+      <div>&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── <span class="file">yf.json</span></div>
+      <div>&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── <span class="file">compute.json</span></div>
+      <div>&nbsp;&nbsp;└── <span class="file">index.html</span> &nbsp;<span class="note">← UI, served by server.py</span></div>
+    </div>
+  </div>
+</div>
+
+<hr class="sep">
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>TICKER UNIVERSE</h2>
+<table class="uni" style="max-width:1100px">
+  <tr><th>SEGMENT</th><th>SOURCE</th><th>COUNT</th><th>KITE COVERAGE</th><th>NOTES</th></tr>
+  <tr><td>NSE Main Board</td><td>EQUITY_L.csv (archives.nseindia.com)</td><td class="num">2,250</td><td class="num">2,117</td><td style="color:var(--muted)">133 suspended/insolvent — excluded correctly by Kite</td></tr>
+  <tr><td>NSE SME Emerge</td><td>equity-stockIndices?index=NIFTY SME EMERGE</td><td class="num">500</td><td class="num">433</td><td style="color:var(--muted)">67 recently listed — Kite onboarding lag, will resolve</td></tr>
+  <tr><td style="color:var(--green);font-weight:bold">TOTAL UNIVERSE</td><td style="color:var(--muted)">NSE (source of truth)</td><td class="num">~2,750</td><td class="num">~2,550</td><td style="color:var(--muted)">Stocks not in Kite → flagged, skip technicals</td></tr>
+</table>
+
+<hr class="sep">
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>DATA SOURCES PER METRIC</h2>
+<div class="row" style="max-width:1100px">
+  <div class="box blue" style="flex:1">
+    <div class="box-title">KITE CONNECT (PRIMARY)</div>
+    <div class="item"><div class="dot b"></div><div>OHLCV history — 193 trading days (~9.5 months)</div></div>
+    <div class="item"><div class="dot b"></div><div>Live price + change % (ltp, batch 500/call)</div></div>
+    <div class="item"><div class="dot b"></div><div>RSI, EMA signals, MACD, ADX, VPB, Golden Cross</div></div>
+    <div class="item"><div class="dot b"></div><div>38W High/Low, ATH(9M), MM Target, Target Price</div></div>
+    <div class="item"><div class="dot b"></div><div>Avg 20 Vol, Daily Vol (Rs Cr), Vol Ratio</div></div>
+    <div class="item"><div class="dot b"></div><div>SME stocks via -SM suffix</div></div>
+  </div>
+  <div class="box green" style="flex:1">
+    <div class="box-title">NSE DIRECT API</div>
+    <div class="item"><div class="dot g"></div><div>Ticker universe — EQUITY_L.csv + SME Emerge</div></div>
+    <div class="item"><div class="dot g"></div><div>PE Ratio (pdSymbolPe) — all 2,750 stocks</div></div>
+    <div class="item"><div class="dot g"></div><div>MCap (totalMarketCap via trade_info)</div></div>
+    <div class="item"><div class="dot g"></div><div>Sector, Company name</div></div>
+    <div class="item"><div class="dot g"></div><div>52W High/Low (weekHighLow) — stored separately</div></div>
+  </div>
+  <div class="box gold" style="flex:1">
+    <div class="box-title">YAHOO FINANCE (FALLBACK)</div>
+    <div class="item"><div class="dot o"></div><div>D/E Ratio — ~1,400 stocks (decision pending)</div></div>
+    <div class="item"><div class="dot o"></div><div>ROE — ~1,400 stocks (decision pending)</div></div>
+    <div class="item"><div class="dot o"></div><div>Stocks without data score 0, not excluded</div></div>
+  </div>
+  <div class="box purple" style="flex:1">
+    <div class="box-title">CLAUDE AI (ON-DEMAND)</div>
+    <div class="item"><div class="dot p"></div><div>Model: claude-haiku-4-5-20251001</div></div>
+    <div class="item"><div class="dot p"></div><div>Per-click · not part of pipeline</div></div>
+    <div class="item"><div class="dot p"></div><div>Input: price, S/R levels, stage, VPB, scores</div></div>
+    <div class="item"><div class="dot p"></div><div>Output: risk / reward / verdict / playbook</div></div>
+    <div class="item"><div class="dot p"></div><div>Key loaded from d:/LLM/llm_engineering/.env</div></div>
+  </div>
+</div>
+
+<hr class="sep">
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>LOCKED DECISIONS</h2>
+<table class="decisions">
+  <tr><th>#</th><th>DECISION</th><th>CHOICE</th></tr>
+  <tr><td><span class="tick">✅</span> 1</td><td>Worker isolation</td><td>kite_worker, nse_worker, yf_worker — separate processes, no shared state</td></tr>
+  <tr><td><span class="tick">✅</span> 2</td><td>Compute layer</td><td>compute.py — separate from all workers, reads raw staging, writes computed</td></tr>
+  <tr><td><span class="tick">✅</span> 3</td><td>Raw staging format</td><td>Option A — one JSON file per source (data/raw/kite.json, nse.json, yf.json) ~44MB total</td></tr>
+  <tr><td><span class="tick">✅</span> 4</td><td>Computed staging</td><td>data/computed/stocks.json — single file, UI-ready</td></tr>
+  <tr><td><span class="tick">✅</span> 5</td><td>Ticker universe source</td><td>NSE is source of truth — EQUITY_L.csv + SME Emerge API (~2,750 stocks)</td></tr>
+  <tr><td><span class="tick">✅</span> 6</td><td>Kite worker threads</td><td>Two threads — Thread 1: full scan (daily), Thread 2: price refresh (every 5 min)</td></tr>
+  <tr><td><span class="tick">✅</span> 7</td><td>Pipeline controller</td><td>orchestrator.py — runs workers in sequence, fires compute when done</td></tr>
+  <tr><td><span class="tick">✅</span> 8</td><td>Worker signalling</td><td>Option C — exit code (flow control) + status JSON (diagnostics)</td></tr>
+  <tr><td><span class="tick">✅</span> 9</td><td>Price refresh path</td><td>Thread 2 writes directly to computed/stocks.json — bypasses orchestrator</td></tr>
+  <tr><td><span class="tick">✅</span> 10</td><td>Price refresh scope</td><td>Updates price, change, stage, upsidePct — market hours hardcoded 9:15–3:30 IST</td></tr>
+  <tr><td><span class="tick">✅</span> 11</td><td>Server role</td><td>HTTP only — no computation, no fetching. Manual scan spawns orchestrator as subprocess</td></tr>
+  <tr><td>⏸ 12</td><td>D/E Ratio in F score</td><td>Decision pending — no free source covers all 2,750 stocks</td></tr>
+  <tr><td>⏸ 13</td><td>ROE display</td><td>Decision pending — decide together with D/E</td></tr>
+  <tr><td><span class="tick">✅</span> 14</td><td>52W High source</td><td>NSE weekHighLow.max — official 52W high. Covers 2,738/2,749 stocks. Used as primary target reference in calc_target(), replacing 38W Kite high</td></tr>
+  <tr><td>⏸ 15</td><td>ATH(9M) vs true ATH</td><td>ATH(9M) default (Kite 193d). Decide when NSE historical data evaluated</td></tr>
+  <tr><td><span class="tick">✅</span> 16</td><td>On-demand AI analysis</td><td>Claude Haiku 4.5 via Anthropic API · agents/sr_analysis_agent.py · POST /api/analyze/&lt;ticker&gt; · per-click, not part of pipeline · key from d:/LLM/llm_engineering/.env</td></tr>
+  <tr><td><span class="tick">✅</span> 17</td><td>AI analysis scope</td><td>Risk (support-based vs natural −9% stop) + Reward (first resistance) + R:R verdict + stage playbook (BREAKOUT / PRE-CROSS). Natural language, uses actual ₹ numbers</td></tr>
+</table>
+
+<div style="color:var(--muted2);font-size:10px;text-align:center;padding-bottom:20px">
+  Dalal Street Scout · Architecture v1.1 · 2026-03-22 · Added Claude Haiku on-demand AI analysis agent
+</div>
+
+</body>
+</html>

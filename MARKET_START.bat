@@ -20,5 +20,5 @@ if %errorlevel%==0 (
 
 :: Start server in minimized window
 echo [%date% %time%] Starting Dalal Street Scout... >> d:\Dalal_street\market_start.log
-start "Dalal Street Scout" /min python d:\Dalal_street\server.py
+start "Dalal Street Scout" /min "C:\Users\RAJARSHI\AppData\Local\Python\pythoncore-3.14-64\python.exe" -W ignore d:\Dalal_street\server.py
 echo [%date% %time%] Server started >> d:\Dalal_street\market_start.log

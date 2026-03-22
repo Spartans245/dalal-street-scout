@@ -33,18 +33,20 @@
 | ADX (OHLCV) | ⚠️ ~1400/2736 stocks | ✅ All 2736 | ✅ All stocks (paid) |
 | EMA 14/50 (OHLCV) | ⚠️ ~1400/2736 stocks | ✅ All 2736 | ✅ All stocks (paid) |
 | VPB (OHLCV + Volume) | ⚠️ ~1400/2736 stocks | ✅ All 2736 | ✅ All stocks (paid) |
-| ATH — 5yr OHLCV | ⚠️ ~1400/2736 stocks | ✅ All 2736 | ✅ All stocks (paid) |
-| Max Upside | ⚠️ ~1400/2736 stocks | ✅ All 2736 | ✅ All stocks (paid) |
-| Live price / change % | ⚠️ Batch, rate limited | ✅ All 2736 via quote-equity | ✅ All stocks, ltp() / WebSocket |
+| ATH — 5yr OHLCV | ⚠️ ~1400/2736 stocks | ✅ All 2736 | ⚠️ ~9 months only (193 rows) |
+| Max Upside | ⚠️ ~1400/2736 stocks | ✅ All 2736 | ⚠️ Based on 9-month ATH only |
+| Live price / change % | ⚠️ Batch, rate limited | ✅ All 2736 via quote-equity | ✅ kite.ltp() — all stocks, batch, real-time |
 | Daily volume | ⚠️ ~1400/2736 stocks | ✅ All 2736 | ✅ All stocks (paid) |
-| 52W High / Low | ✅ info field | ✅ weekHighLow in quote-equity | ✅ Compute from 1y OHLCV |
-| PE ratio | ✅ info['trailingPE'] ~1400 | ✅ pdSymbolPe all 2736 | ❌ Not available |
-| D/E ratio | ✅ info['debtToEquity'] ~1400 | ❌ Not available | ❌ Not available |
-| ROE | ✅ info['returnOnEquity'] ~1400 | ❌ Not available | ❌ Not available |
-| MCap | ⚠️ info['marketCap'] unreliable | ✅ issuedSize × price, all 2736 | ⚠️ Compute from instruments |
-| Sector | ✅ info['sector'] ~1400 | ✅ industryInfo.sector all 2736 | ❌ Not available |
-| Company name | ✅ info['longName'] ~1400 | ✅ companyName all 2736 | ❌ Not available |
-| Ticker universe | ❌ No NSE list | ✅ EQUITY_L.csv, all 2736 | ✅ instruments('NSE') |
+| 52W High / Low | ✅ info field | ✅ weekHighLow in quote-equity | ✅ From NSE quote-equity (kite_worker uses NSE) |
+| PE ratio | ✅ info['trailingPE'] ~1400 | ✅ pdSymbolPe all 2736 | ✅ From NSE quote-equity (kite_worker uses NSE) |
+| D/E ratio | ✅ info['debtToEquity'] ~1400 | ❌ Not available | ❌ Not available — stored null, F score loses D/E pts |
+| ROE | ✅ info['returnOnEquity'] ~1400 | ❌ Not available | ❌ Not available — display N/A |
+| MCap | ⚠️ info['marketCap'] unreliable | ✅ totalMarketCap via trade_info | ✅ From NSE trade_info (kite_worker uses NSE) |
+| Sector | ✅ info['sector'] ~1400 | ✅ industryInfo.sector all 2736 | ✅ From NSE quote-equity (kite_worker uses NSE) |
+| Company name | ✅ info['longName'] ~1400 | ✅ companyName all 2736 | ✅ From NSE quote-equity (kite_worker uses NSE) |
+| Ticker universe | ❌ No NSE list | ✅ EQUITY_L.csv, all 2736 | ✅ instruments('NSE') — 9494 EQ symbols |
+| Promoter Holding | ✅ info ~1400 | ❌ Not available | ❌ Not available — hardcoded 0 |
+| Pledging | ✅ info ~1400 | ❌ Not available | ❌ Not available — hardcoded 0 |
 
 ---
 
@@ -124,3 +126,53 @@ isSuspended      → skip suspended stocks
 - Whether to replace Yahoo OHLCV with NSE Historical API (covers 2736 vs 1400)
 - Whether to drop D/E from F score entirely (no free source covers all 2736)
 - Whether live price refresh stays on Yahoo batch or moves to NSE quote-equity with proper session handling
+
+---
+
+## Kite Worker — Verified Delivery (tested 2026-03-20, 5 tickers)
+
+### What kite_worker.py actually delivers per stock
+
+| Metric | Source in kite_worker | Verified | Notes |
+|---|---|---|---|
+| ticker | instruments('NSE') | ✅ | 9494 EQ symbols available |
+| name | NSE quote-equity → companyName | ✅ | e.g. "Reliance Industries Limited" |
+| sector | NSE quote-equity → industry | ✅ | e.g. "Refineries & Marketing" |
+| price | kite.ltp() during market hours, else last OHLCV Close | ✅ | Live real-time price |
+| change % | (ltp - prev_close) / prev_close | ✅ | Live intraday change % |
+| pe | NSE quote-equity → pdSymbolPe | ✅ | e.g. 19.2 for RELIANCE |
+| mcap (Cr) | NSE trade_info → totalMarketCap | ✅ | e.g. 19,12,950 Cr for RELIANCE |
+| debtEq | Not available | ❌ null | F score D/E component = 0 |
+| roe | Not available | ❌ null | Display N/A |
+| promoterHolding | Not available | ❌ 0 | Not scored |
+| pledging | Not available | ❌ 0 | Pending removal from F score |
+| wk52High / wk52Low | NSE quote-equity → weekHighLow | ✅ | Accurate NSE 52W range |
+| pctFrom52High/Low | Calculated | ✅ | |
+| rsi | Kite OHLCV → calc_technicals() | ✅ | e.g. 53.9 for RELIANCE |
+| adx | Kite OHLCV → calc_technicals() | ✅ | e.g. 24.8 for RELIANCE |
+| macd | Kite OHLCV → calc_technicals() | ✅ | |
+| emaSignal / emaCross | Kite OHLCV → calc_technicals() | ✅ | All 6 EMA signal fields |
+| vpbScore / vpbDetail | Kite OHLCV → calc_technicals() | ✅ | All VPB tiers |
+| stage | classify_stage(tech) | ✅ | e.g. coiling, breakout |
+| score / fScore / tScore | score(pe, None, None, dvol, tech) | ✅ | e.g. score=41 for RELIANCE |
+| chartPrices / chartDates | Kite last 60 rows | ✅ | 60 days chart data |
+| ath | Kite max(High) all rows | ⚠️ | Only ~9 months deep, not true 5yr ATH |
+| targetPrice / upsidePct | calc_target() | ⚠️ | Based on 9-month ATH, may understate |
+| dailyVol (₹ Cr) | avg20Vol × price / 1e7 | ✅ | e.g. 2567.9 Cr for RELIANCE |
+| avg20Vol | Kite Volume 20d avg | ✅ | |
+| data_source | 'kite' | ✅ | Tagged for UI differentiation |
+
+### History depth
+- Kite `historical_data()` with 280 calendar days → **193 trading rows** (~9.5 months)
+- Sufficient for: RSI(14) ✅, EMA(50) ✅, ADX ✅, VPB(20d) ✅
+- NOT sufficient for: true 5yr ATH ⚠️ (affects max upside calculation only)
+
+### Scoring impact vs Yahoo Finance baseline
+| Score component | Yahoo | Kite |
+|---|---|---|
+| F — PE (up to 20 pts) | ✅ | ✅ (via NSE) |
+| F — D/E (up to 10 pts) | ✅ ~1400 stocks | ❌ always 0 |
+| T — RSI (12 pts) | ✅ | ✅ |
+| T — ADX (10 pts) | ✅ | ✅ |
+| Signal (up to 21 pts) | ✅ | ✅ |
+| **Max achievable score** | **73** | **~63** (D/E=0 for all) |

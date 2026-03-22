@@ -2,6 +2,21 @@
 cache.json
 tickers_cache.json
 
+# Kite API credentials — NEVER commit
+kite_config.json
+kite_token.json
+kite_auth.py
+
+# Raw market data — large, auto-generated
+data/
+kite/
+
+# SME symbols — auto-fetched
+sme_symbols.json
+
+# Agents — WIP
+agents/
+
 # Python
 __pycache__/
 *.pyc

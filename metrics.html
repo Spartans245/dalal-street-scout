@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dalal Street Scout — Metrics Reference</title>
+<style>
+  :root {
+    --bg: #eef0f7; --s1: #ffffff; --s2: #f5f6fa; --border: #d4d8e8;
+    --text: #1a1f36; --muted: #4a5270; --muted2: #8890aa;
+    --green: #15803d; --gold: #b45309; --blue: #2563eb;
+    --red: #dc2626; --purple: #7c3aed; --orange: #c2710c;
+    --fm: 'JetBrains Mono', 'Courier New', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--fm); font-size: 12px; padding: 32px; }
+
+  h1 { font-size: 18px; letter-spacing: 2px; color: var(--blue); margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 11px; margin-bottom: 32px; letter-spacing: 1px; }
+  h2 { font-size: 11px; letter-spacing: 2px; color: var(--muted); margin: 32px 0 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px; text-transform: uppercase; }
+
+  table { width: 100%; border-collapse: collapse; margin-bottom: 32px; }
+  th { background: var(--s2); color: var(--muted); font-size: 9px; letter-spacing: 1.2px; text-transform: uppercase; padding: 8px 14px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--border); font-size: 11px; color: var(--muted); vertical-align: top; line-height: 1.6; }
+  td:first-child { white-space: nowrap; }
+  tr:hover td { background: var(--s1); }
+
+  .metric-name { color: var(--text); font-weight: bold; font-size: 11px; }
+  .approved { color: var(--green); margin-left: 4px; font-size: 10px; }
+  .pending  { color: var(--gold);  margin-left: 4px; font-size: 10px; }
+
+  .raw { color: var(--blue); }
+  .formula { color: var(--muted); }
+  .formula strong { color: var(--text); }
+
+  .section-desc { font-size: 11px; color: var(--muted2); margin-bottom: 14px; line-height: 1.6; }
+
+  .legend { display: flex; gap: 20px; margin-bottom: 24px; font-size: 10px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+  .lbadge { padding: 1px 7px; border-radius: 3px; font-size: 9px; font-weight: bold; }
+  .lbadge.ok  { background: rgba(21,128,61,0.12);  color: var(--green); border: 1px solid #15803d; }
+  .lbadge.pnd { background: rgba(180,83,9,0.12);   color: var(--gold);  border: 1px solid #b45309; }
+  .lbadge.dec { background: rgba(220,38,38,0.12);  color: var(--red);   border: 1px solid #dc2626; }
+
+  .source-tag { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 9px; margin-right: 4px; }
+  .src-kite { background: rgba(37,99,235,0.10);  color: var(--blue);   border: 1px solid #2563eb; }
+  .src-nse  { background: rgba(21,128,61,0.10);  color: var(--green);  border: 1px solid #15803d; }
+  .src-yf   { background: rgba(194,113,12,0.10); color: var(--orange); border: 1px solid #c2710c; }
+  .src-calc { background: rgba(124,58,237,0.10); color: var(--purple); border: 1px solid #7c3aed; }
+</style>
+</head>
+<body>
+
+<h1>METRICS REFERENCE</h1>
+<div class="sub">Dalal Street Scout &nbsp;·&nbsp; All metrics, raw data required, and formulas</div>
+
+<div class="legend">
+  <div class="legend-item"><span class="lbadge ok">APPROVED</span> Formula locked</div>
+  <div class="legend-item"><span class="lbadge pnd">PENDING</span> Decision deferred</div>
+  <div class="legend-item"><span class="source-tag src-kite">KITE</span> Kite Connect</div>
+  <div class="legend-item"><span class="source-tag src-nse">NSE</span> NSE Direct API</div>
+  <div class="legend-item"><span class="source-tag src-yf">YF</span> Yahoo Finance</div>
+  <div class="legend-item"><span class="source-tag src-calc">CALC</span> Computed post-scan</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2>Fundamentals</h2>
+<p class="section-desc">Balance sheet and valuation metrics. PE and MCap from NSE. D/E and ROE pending data source decision.</p>
+<table>
+  <tr><th>Metric</th><th>Source</th><th>Raw Data Required</th><th>Formula / Notes</th></tr>
+  <tr>
+    <td><span class="metric-name">PE Ratio</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-nse">NSE</span></td>
+    <td class="raw">PE Ratio</td>
+    <td>Sourced directly from NSE quote-equity (pdSymbolPe) — all 2,736 stocks</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">Sector Median PE</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-calc">CALC</span></td>
+    <td class="raw">PE of all stocks in sector</td>
+    <td>median(PE) grouped by sector — excludes stocks with PE &le; 0 (no earnings) — computed post-scan in enrich_sector_pe()</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">PE vs Sector</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-calc">CALC</span></td>
+    <td class="raw">Stock PE &nbsp;·&nbsp; Sector Median PE</td>
+    <td>
+      (stock PE &minus; sector median PE) &divide; sector median PE &times; 100<br>
+      <strong>F score tiers:</strong> 0 to +20% &rarr; 12pts (sweet spot) &nbsp;/&nbsp; &minus;20 to 0% &rarr; 10pts &nbsp;/&nbsp;
+      &minus;40 to &minus;20% &rarr; 7pts &nbsp;/&nbsp; +20 to +40% &rarr; 5pts &nbsp;/&nbsp;
+      &gt;+40% &rarr; 2pts &nbsp;/&nbsp; &minus;60 to &minus;40% &rarr; 2pts &nbsp;/&nbsp; &lt;&minus;60% &rarr; 0pts (value trap)
+    </td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">D/E Ratio</span> <span class="pending">⏸ PENDING</span></td>
+    <td><span class="source-tag src-yf">YF</span></td>
+    <td class="raw">D/E Ratio</td>
+    <td>Not available from Kite or NSE. Yahoo Finance covers ~1,400 of 2,750 stocks. Decision: drop from F score or find full-coverage source.</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">ROE</span> <span class="pending">⏸ PENDING</span></td>
+    <td><span class="source-tag src-yf">YF</span></td>
+    <td class="raw">ROE</td>
+    <td>Not available from Kite or NSE. Yahoo Finance covers ~1,400 stocks. Display only — not scored. Decide together with D/E.</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">MCap</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-nse">NSE</span></td>
+    <td class="raw">MCap</td>
+    <td>Sourced directly from NSE trade_info (totalMarketCap) — all 2,750 stocks. Used for MCap filter tabs and tiebreak sort.</td>
+  </tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2>Technical</h2>
+<p class="section-desc">All technical metrics computed from Kite OHLCV history (193 trading days ~9.5 months). Shared math in shared/technicals.py.</p>
+<table>
+  <tr><th>Metric</th><th>Source</th><th>Raw Data Required</th><th>Formula</th></tr>
+  <tr>
+    <td><span class="metric-name">RSI (14)</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily Close (14+ days)</td>
+    <td>gain = Wilder smooth of positive daily changes (&alpha;=1/14); loss = Wilder smooth of negative daily changes (&alpha;=1/14); RSI = 100 &minus; 100/(1 + gain/loss)</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">EMA 14</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily Close (14+ days)</td>
+    <td>Exponential moving average, span = 14</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">EMA 50</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily Close (50+ days)</td>
+    <td>Exponential moving average, span = 50</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">EMA Cross</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily Close (50+ days)</td>
+    <td>EMA14 crosses above EMA50 — detected within last 5 days</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">EMA Pre-Cross</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily Close (50+ days)</td>
+    <td>EMA14 below EMA50, gap &lt; 0.5% of price, EMA14 rising faster than 3 days ago</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">EMA Post-Cross</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily Close (50+ days)</td>
+    <td>Cross happened 1&ndash;2 days ago AND EMA14&ndash;EMA50 gap still &lt; 1.5% of price</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">EMA Pullback</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily Close (50+ days)</td>
+    <td>Cross happened &ge; 2 days ago AND price was &gt; 2% above EMA14 in last 5 days (confirmed move away) AND price is now 0&ndash;2% above EMA14 (dipped back, still above)</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">EMA Trend</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily Close (50+ days)</td>
+    <td>EMA14 &gt; EMA50, no fresh cross in last 5 days</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">MACD Signal</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily Close (26+ days)</td>
+    <td>MACD line = EMA(12) &minus; EMA(26); Signal = EMA(MACD, 9); True if MACD crossed above Signal today</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">Golden Cross</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily Close (190+ days)</td>
+    <td>EMA30 &gt; EMA190</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">ADX (14)</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily High, Low, Close (28+ days)</td>
+    <td>TR = max(H&minus;L, |H&minus;Cprev|, |L&minus;Cprev|); +DM / &minus;DM per bar; Wilder smooth(14) &rarr; ATR, +DI, &minus;DI; DX = 100 &times; |+DI&minus;&minus;DI| / (+DI+&minus;DI); ADX = Wilder smooth(DX, 14)</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">VPB &mdash; Price Coiling</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily Close (6 days)</td>
+    <td>(max &minus; min of last 5 closes) / min &lt; 0.04 (range &lt; 4%)</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">VPB &mdash; Vol Shrinking</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily Volume (25 days)</td>
+    <td>All of last 3 days volume &lt; 85% of 20-day avg baseline</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">VPB &mdash; Vol Ratio</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily Volume (25 days)</td>
+    <td>Today volume &divide; avg20 baseline</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">VPB &mdash; Close Position</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily High, Low, Close</td>
+    <td>(Close &minus; Low) &divide; (High &minus; Low)</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">VPB Score</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily High, Low, Close, Volume (25+ days)</td>
+    <td>
+      BRK&#10003; +10 (setup + vol&ge;2&times; + pos&ge;0.70) &nbsp;/&nbsp;
+      BRK&#10003; +7 (setup + vol&ge;1.5&times; + pos&ge;0.60) &nbsp;/&nbsp;
+      BRK~ +5 (setup + vol&ge;1.5&times; + pos&lt;0.60) &nbsp;/&nbsp;
+      VOL +4 (no setup + vol&ge;2&times; + pos&ge;0.70) &nbsp;/&nbsp;
+      COIL&#10003; +3 (setup + vol&lt;1&times;) &nbsp;/&nbsp;
+      COIL~ +2 (price coiling only) &nbsp;/&nbsp;
+      DIST &minus;2 (setup + vol&ge;1.5&times; + pos&lt;0.30)
+    </td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">Vol Confirmed Cross</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily Volume, Close (50+ days)</td>
+    <td>Cross day volume &ge; 1.5&times; 20-day avg before cross</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">Cross Score</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily Volume, Close (50+ days)</td>
+    <td>18 (vol confirmed, 1&ndash;2d ago) &nbsp;/&nbsp; 14 (vol confirmed, 3&ndash;4d ago) &nbsp;/&nbsp; 10 (vol confirmed, 5d ago) &nbsp;/&nbsp; 8 (no vol confirmation)</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">Near 38W High</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily Close (193 days)</td>
+    <td>Close &ge; max(Close, 193d) &times; 0.92 &mdash; default (Kite depth ~38W)</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">38W High / Low</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily High, Low (193 days)</td>
+    <td>max(High, 193d) / min(Low, 193d) &mdash; from Kite history</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">Near 52W High</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-nse">NSE</span></td>
+    <td class="raw">52W High (NSE)</td>
+    <td>Close &ge; wk52High &times; 0.92 &mdash; sourced from NSE weekHighLow.max. Badge shown in modal.</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">52W High / Low</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-nse">NSE</span></td>
+    <td class="raw">NSE quote-equity weekHighLow</td>
+    <td>52W High = weekHighLow.max &nbsp;/&nbsp; 52W Low = weekHighLow.min &mdash; official NSE 1-year range. 2,738 of 2,749 stocks have data. <strong>Primary target reference</strong> — replaces Kite 38W High.</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">Swing S/R Levels</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span> <span class="source-tag src-calc">CALC</span></td>
+    <td class="raw">Daily High, Low (193 days)</td>
+    <td>Local swing highs/lows confirmed by 5-bar window on each side → clustered within 1.5% → up to 3 resistance levels above price, 3 support levels below. Strength = number of swing points in cluster. Shown in stock modal.</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">ATH (9M)</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily High (193 days)</td>
+    <td>max(High, 193d) &mdash; Kite history depth. Default for now. <span style="color:var(--gold)">&#9888; Decision pending: replace with true ATH when NSE data available.</span></td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">MM Target</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily High, Low (6 days) &nbsp;·&nbsp; Current Price</td>
+    <td>price + (max(High[&minus;6:&minus;1]) &minus; min(Low[&minus;6:&minus;1]))</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">Target Price</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-calc">CALC</span></td>
+    <td class="raw">MM Target &nbsp;·&nbsp; 52W High (NSE) &nbsp;·&nbsp; ATH(9M) &nbsp;·&nbsp; Current Price</td>
+    <td>
+      Nearest of MM Target, 52W High, ATH(9M) that is still above current price. Shown as [MM] / [52W] / [ATH(9M)] in scanner.<br>
+      <strong>MM is only shown for BREAKOUT, PRE-CROSS, COILING stages</strong> — in POST-CROSS, PULLBACK, TRENDING, NONE the nearest ceiling is 52W High or ATH(9M) instead.
+    </td>
+  </tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2>Liquidity</h2>
+<p class="section-desc">Volume-based metrics computed from Kite OHLCV. Avg 20 Vol baseline excludes last 5 days to avoid coiling period distortion.</p>
+<table>
+  <tr><th>Metric</th><th>Source</th><th>Raw Data Required</th><th>Formula</th></tr>
+  <tr>
+    <td><span class="metric-name">Avg 20 Vol</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily Volume (25 days)</td>
+    <td>Mean of days &minus;25 to &minus;5 (excludes most recent 5 days so coiling period does not distort baseline)</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">Daily Vol (&#8377; Cr)</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily Volume (25 days) &nbsp;·&nbsp; Current Price</td>
+    <td>Avg 20 Vol &times; Price &divide; 10,000,000</td>
+  </tr>
+  <tr>
+    <td><span class="metric-name">Vol Ratio</span> <span class="approved">✅</span></td>
+    <td><span class="source-tag src-kite">KITE</span></td>
+    <td class="raw">Daily Volume (25 days)</td>
+    <td>Today volume &divide; Avg 20 Vol</td>
+  </tr>
+</table>
+
+<div style="color:var(--muted2);font-size:10px;text-align:center;padding-bottom:20px">
+  Dalal Street Scout &nbsp;&middot;&nbsp; Metrics Reference v1.0 &nbsp;&middot;&nbsp; 2026-03-21
+</div>
+
+</body>
+</html>

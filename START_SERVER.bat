@@ -7,20 +7,22 @@ echo  ============================================
 echo   DALAL STREET SCOUT — Starting Server
 echo  ============================================
 echo.
-echo  Installing required libraries...
-pip install yfinance pandas requests -q
-echo.
 echo  Starting server at http://localhost:5000
 echo  Opening browser...
 echo.
 timeout /t 2 /nobreak >nul
 start http://localhost:5000
 
+rem ── Set your Anthropic API key here ──────────────────────────────────────
+rem set ANTHROPIC_API_KEY=sk-ant-your-key-here
+rem ─────────────────────────────────────────────────────────────────────────
+
+set PYTHON="C:\Users\RAJARSHI\AppData\Local\Python\pythoncore-3.14-64\python.exe"
 set CRASHES=0
 
 :restart
 echo  [%time%] Server starting...
-python -W ignore server.py
+%PYTHON% -W ignore server.py
 echo.
 set /a CRASHES+=1
 if %CRASHES% geq 5 (
