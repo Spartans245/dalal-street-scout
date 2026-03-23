@@ -4427,9 +4427,19 @@ function openDetail(ticker){
   const s=allStocks.find(x=>x.ticker===ticker);if(!s)return;
   openDetailTicker = ticker;
   const prev=prevStocks.find(p=>p.ticker===ticker);
-  const diff=prev?s.score-prev.score:null;
+  const _t   = rsiScore(s.rsi) + adxScore(s.adx);
+  const _sig = (()=>{
+    if(s.stage==='trending'||s.stage==='none') return 0;
+    if(s.emaPreCross && s.vpbScore>0) return s.vpbScore>=10?18:s.vpbScore>=7?14:12;
+    if(s.crossScore>0) return s.crossScore + (s.stage==='pullback'?3:0);
+    if(s.vpbScore>0) return s.vpbScore;
+    return 0;
+  })();
+  const _fullScore = (s.fScore||0) + _t + _sig;
+  const _prevFull  = prev ? (prev.fScore||0)+rsiScore(prev.rsi)+adxScore(prev.adx) : null;
+  const diff = _prevFull!==null ? _fullScore - _prevFull : null;
   document.getElementById('mTitle').textContent=s.ticker;
-  document.getElementById('mSub').textContent=`${s.name||s.ticker} · ${s.sector} · MCap ₹${parseInt(s.mcap).toLocaleString('en-IN')} Cr · Score ${s.score}/100${diff!==null?' · '+(diff>0?'▲ +':'▼ ')+diff+' vs prev':''}`;
+  document.getElementById('mSub').textContent=`${s.name||s.ticker} · ${s.sector} · MCap ₹${parseInt(s.mcap).toLocaleString('en-IN')} Cr · Score ${_fullScore}/63${diff!==null?' · '+(diff>0?'▲ +':'▼ ')+diff+' vs prev':''}`;
   document.getElementById('mBody').innerHTML='<div style="padding:40px;text-align:center;color:var(--muted2);font-family:var(--fm);font-size:12px;letter-spacing:0.5px">Loading…</div>';
   _openMov('mov');
   setTimeout(()=>{
@@ -4466,7 +4476,7 @@ function openDetail(ticker){
       <div class="dc"><div class="dcl">${serverStatus==='live'?'Live Price':'Closing Price'}</div><div class="dcv">₹${s.price.toLocaleString('en-IN')}</div><div class="dcs ${s.change>=0?'up':'dn'}">${s.change>=0?'+':''}${s.change}%</div></div>
       <div class="dc"><div class="dcl">Max Upside${mTType?' ['+mTType+']':''}${mMmCond?' <span style="color:var(--gold)">!</span>':''}</div><div class="dcv" style="color:var(--green)">${mTPrice?'₹'+mTPrice.toLocaleString('en-IN'):'—'}</div><div class="dcs" style="color:var(--green)">${mUPct?'+'+mUPct+'%':''} ${mURs?'· ₹'+Math.round(mURs).toLocaleString('en-IN'):''}${mMmCond?' <span style="font-size:9px;color:var(--gold)">if BRK</span>':''}</div></div>
       <div class="dc"><div class="dcl">Stop Loss (–9%)</div><div class="dcv" style="color:var(--red)">₹${parseFloat(sl).toLocaleString('en-IN')}</div><div class="dcs" style="color:var(--muted)">Hard exit</div></div>
-      <div class="dc"><div class="dcl">Score</div><div class="dcv" style="color:${s.score>=70?'var(--green)':s.score>=50?'var(--gold)':'var(--red)'}">${s.score}<span style="font-size:12px;color:var(--muted)">/100</span></div><div class="dcs">${s.score>=70?'✅ Strong':s.score>=50?'⚠️ Watch':'❌ Skip'}</div></div>
+      <div class="dc"><div class="dcl">Score</div><div class="dcv" style="color:${_fullScore>=49?'var(--green)':_fullScore>=34?'var(--gold)':'var(--red)'}">${_fullScore}<span style="font-size:12px;color:var(--muted)">/63</span></div><div class="dcs">${_fullScore>=49?'✅ Strong':_fullScore>=34?'⚠️ Watch':'❌ Skip'}</div></div>
     </div>
     <div class="sb">${sr('Fundamentals',s.fScore,20,'var(--gold)')}${sr('Technicals',s.tScore,22,'var(--blue)')}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -5192,6 +5202,18 @@ function openWLDetail(ticker) {
   const tgt = (s.price*1.275).toFixed(2);
   const sl  = (s.price*0.91).toFixed(2);
   const pt  = (s.price*1.15).toFixed(2);
+
+  // Compute F+T+Signal /63
+  const _wt  = rsiScore(s.rsi) + adxScore(s.adx);
+  const _wsig = (()=>{
+    if(s.stage==='trending'||s.stage==='none') return 0;
+    if(s.emaPreCross && s.vpbScore>0) return s.vpbScore>=10?18:s.vpbScore>=7?14:12;
+    if(s.crossScore>0) return s.crossScore + (s.stage==='pullback'?3:0);
+    if(s.vpbScore>0) return s.vpbScore;
+    return 0;
+  })();
+  const _wfull = (s.fScore||0) + _wt + _wsig;
+
   const cv  = {green:'var(--green)',yellow:'var(--gold)',red:'var(--red)',grey:'var(--muted2)'};
   const mr  = (l,v,c) => `<div class="mrow"><span class="mrl">${l}</span><span class="mrv" style="color:${cv[c]||cv.grey}">${v}</span></div>`;
   const flagColors={
@@ -5223,8 +5245,8 @@ function openWLDetail(ticker) {
         <div class="dcs" style="color:var(--muted)">Hard exit</div>
       </div>
       <div class="dc"><div class="dcl">Score</div>
-        <div class="dcv" style="color:${s.score>=70?'var(--green)':s.score>=50?'var(--gold)':'var(--red)'}">${s.score}<span style="font-size:12px;color:var(--muted)">/100</span></div>
-        <div class="dcs">${s.score>=33?'✅ Strong Entry':s.score>=23?'⚠️ Watch':'❌ Skip'}</div>
+        <div class="dcv" style="color:${_wfull>=49?'var(--green)':_wfull>=34?'var(--gold)':'var(--red)'}">${_wfull}<span style="font-size:12px;color:var(--muted)">/63</span></div>
+        <div class="dcs">${_wfull>=49?'✅ Strong':_wfull>=34?'⚠️ Watch':'❌ Skip'}</div>
       </div>
     </div>
 
