@@ -337,6 +337,7 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
     <div style="padding:8px 16px 4px;font-size:9px;letter-spacing:1.2px;color:var(--muted2);text-transform:uppercase;font-family:var(--fm)">Educational</div>
     <div class="nav-item" id="nav-metrics" onclick="switchTab('metrics',this)">&#9650; Metrics</div>
     <div class="nav-item" id="nav-strategy" onclick="switchTab('strategy',this)">&#9883; Strategy</div>
+    <div class="nav-item" id="nav-evals" onclick="switchTab('evals',this)">&#9654; Evals</div>
   </div>
 </nav>
 <div class="content-area">
@@ -2862,6 +2863,81 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
   <div id="ctrlContent">
     <div class="empty"><h3>LOADING...</h3></div>
   </div>
+</div>
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- EVALS                                                           -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="panel" id="tab-evals">
+  <div class="stitle">EVALS <span style="font-family:var(--fm);font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0">— strategy validation · does the scanner actually work?</span></div>
+
+  <!-- Summary stats bar -->
+  <div id="evSummary" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px;font-family:var(--fm)">
+    <div class="sb" style="margin:0;padding:10px 14px">
+      <div style="font-size:9px;color:var(--muted);letter-spacing:0.8px;margin-bottom:4px">SIGNALS</div>
+      <div id="evTotal" style="font-size:18px;font-weight:700;color:var(--text)">—</div>
+    </div>
+    <div class="sb" style="margin:0;padding:10px 14px">
+      <div style="font-size:9px;color:var(--muted);letter-spacing:0.8px;margin-bottom:4px">HIT RATE (D20)</div>
+      <div id="evHitRate" style="font-size:18px;font-weight:700;color:var(--text)">—</div>
+    </div>
+    <div class="sb" style="margin:0;padding:10px 14px">
+      <div style="font-size:9px;color:var(--muted);letter-spacing:0.8px;margin-bottom:4px">AVG RETURN D20</div>
+      <div id="evAvgRet" style="font-size:18px;font-weight:700;color:var(--text)">—</div>
+    </div>
+    <div class="sb" style="margin:0;padding:10px 14px">
+      <div style="font-size:9px;color:var(--muted);letter-spacing:0.8px;margin-bottom:4px">BEST D20</div>
+      <div id="evBest" style="font-size:18px;font-weight:700;color:var(--green)">—</div>
+    </div>
+    <div class="sb" style="margin:0;padding:10px 14px">
+      <div style="font-size:9px;color:var(--muted);letter-spacing:0.8px;margin-bottom:4px">WORST D20</div>
+      <div id="evWorst" style="font-size:18px;font-weight:700;color:var(--red)">—</div>
+    </div>
+  </div>
+
+  <!-- Sub-tab nav -->
+  <div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:14px;gap:0">
+    <button id="evtab-stock" onclick="switchEvTab('stock')" style="padding:5px 16px;border:none;background:none;cursor:pointer;font-family:var(--fm);font-size:11px;color:var(--text);font-weight:600;border-bottom:2px solid var(--text);margin-bottom:-1px;letter-spacing:0.5px">STOCK-WISE</button>
+    <button id="evtab-date"  onclick="switchEvTab('date')"  style="padding:5px 16px;border:none;background:none;cursor:pointer;font-family:var(--fm);font-size:11px;color:var(--muted);font-weight:400;border-bottom:2px solid transparent;margin-bottom:-1px;letter-spacing:0.5px">DATE-WISE</button>
+  </div>
+
+  <!-- ── STOCK-WISE sub-tab ── -->
+  <div id="ev-stock" style="display:block">
+    <!-- Filters -->
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+      <select id="evStageFilter" onchange="renderEvStock()" style="font-family:var(--fm);font-size:10px;background:var(--s2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;cursor:pointer">
+        <option value="all">All Stages</option>
+        <option value="post_cross">POST-CROSS</option>
+        <option value="pre_cross">PRE-CROSS</option>
+        <option value="breakout">BREAKOUT</option>
+        <option value="pullback">PULLBACK</option>
+      </select>
+      <select id="evSortField" onchange="renderEvStock()" style="font-family:var(--fm);font-size:10px;background:var(--s2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;cursor:pointer">
+        <option value="day0">Sort: Date (newest)</option>
+        <option value="score">Sort: Score</option>
+        <option value="ret20">Sort: D20 Return</option>
+        <option value="current">Sort: Current Return</option>
+      </select>
+      <input id="evSearch" oninput="renderEvStock()" placeholder="Search ticker…" style="font-family:var(--fm);font-size:10px;background:var(--s2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;width:120px">
+      <button onclick="loadEvals()" style="font-family:var(--fm);font-size:10px;background:var(--s2);border:1px solid var(--border);color:var(--muted);padding:4px 10px;border-radius:4px;cursor:pointer">⟳ Refresh</button>
+    </div>
+    <div id="evStockTable" style="overflow-x:auto">
+      <div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">Loading signals…</div>
+    </div>
+  </div>
+
+  <!-- ── DATE-WISE sub-tab ── -->
+  <div id="ev-date" style="display:none">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <button onclick="evDateNav(-1)" style="font-family:var(--fm);font-size:14px;background:var(--s2);border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:4px;cursor:pointer">‹</button>
+      <select id="evDateSel" onchange="renderEvDate()" style="font-family:var(--fm);font-size:11px;background:var(--s2);border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:4px;cursor:pointer;min-width:140px"></select>
+      <button onclick="evDateNav(+1)" style="font-family:var(--fm);font-size:14px;background:var(--s2);border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:4px;cursor:pointer">›</button>
+      <span id="evDateCount" style="font-family:var(--fm);font-size:10px;color:var(--muted)"></span>
+    </div>
+    <div id="evDateGrid" style="overflow-x:auto">
+      <div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">Select a date to see signals</div>
+    </div>
+  </div>
+
 </div>
 </div><!-- end content-area -->
 </div><!-- end layout -->
@@ -5652,6 +5728,400 @@ document.addEventListener('click', e => {
 
 // INIT
 renderWL();
+
+
+// ═══════════════════════════════════════════════════════
+// EVALS — Strategy Validation
+// ═══════════════════════════════════════════════════════
+let evSignals = [];
+
+// ── Day-N helpers ──────────────────────────────────────
+// Returns sorted trading-day dates for a signal
+function evDays(sig) {
+  return Object.keys(sig.prices || {}).sort();
+}
+// Get price at Day N (0-indexed trading day)
+function evPriceAtDay(sig, n) {
+  const days = evDays(sig);
+  if (n >= days.length) return null;
+  return sig.prices[days[n]] || null;
+}
+// Get % return at Day N vs Day 0
+function evRetAt(sig, n) {
+  const p0 = evPriceAtDay(sig, 0);
+  const pn = evPriceAtDay(sig, n);
+  if (!p0 || !pn) return null;
+  return +((pn - p0) / p0 * 100).toFixed(2);
+}
+// Closest available price at/before checkpoint day N
+function evRetNearest(sig, n) {
+  const days = evDays(sig);
+  if (!days.length) return null;
+  const p0 = sig.prices[days[0]];
+  if (!p0) return null;
+  // Find the day closest to n from available days
+  const idx = Math.min(n, days.length - 1);
+  const pn = sig.prices[days[idx]];
+  if (!pn) return null;
+  return +((pn - p0) / p0 * 100).toFixed(2);
+}
+// Number of trading days since Day0
+function evAge(sig) { return evDays(sig).length - 1; }
+// Current return (last available price vs D0)
+function evCurrentRet(sig) {
+  const days = evDays(sig);
+  if (days.length < 2) return null;
+  const p0 = sig.prices[days[0]];
+  const pl = sig.prices[days[days.length - 1]];
+  if (!p0 || !pl) return null;
+  return +((pl - p0) / p0 * 100).toFixed(2);
+}
+// Signal status: HIT / STOP / OPEN
+function evStatus(sig) {
+  const p0 = sig.price_d0 || 0;
+  if (!p0) return 'OPEN';
+  const prices = Object.values(sig.prices || {});
+  if (prices.some(p => p >= p0 * 1.275)) return 'HIT';
+  if (prices.some(p => p <= p0 * 0.91))  return 'STOP';
+  return 'OPEN';
+}
+
+const _stageShort = {post_cross:'POST-X', pre_cross:'PRE-X', breakout:'BRK', pullback:'PULL', trending:'TREND', coiling:'COIL', none:'—'};
+const _stageColEv = {post_cross:'var(--green)',pre_cross:'var(--gold)',breakout:'var(--blue)',pullback:'#c084fc',trending:'var(--muted)',coiling:'var(--muted)',none:'var(--muted)'};
+const _statusCol  = {HIT:'var(--green)',STOP:'var(--red)',OPEN:'var(--muted)'};
+
+function _retCell(r, placeholder) {
+  if (r === null) return `<td style="padding:3px 6px;text-align:center;font-family:var(--fm);font-size:9px;color:var(--muted)">${placeholder||'—'}</td>`;
+  const c = r > 0 ? 'var(--green)' : r < 0 ? 'var(--red)' : 'var(--muted)';
+  const s = r > 0 ? '+' : '';
+  return `<td style="padding:3px 6px;text-align:center;font-family:var(--fm);font-size:10px;font-weight:600;color:${c}">${s}${r}%</td>`;
+}
+
+// ── Load evals data from server ────────────────────────
+async function loadEvals() {
+  try {
+    const r = await fetch('/api/evals');
+    const d = await r.json();
+    evSignals = (d.signals || []).reverse(); // newest first
+    computeEvSummary();
+    renderEvStock();
+    renderEvDateSelector();
+  } catch(e) {
+    document.getElementById('evStockTable').innerHTML =
+      `<div style="font-family:var(--fm);font-size:11px;color:var(--red);padding:20px">Error loading evals: ${e}</div>`;
+  }
+}
+
+// ── Summary stats ──────────────────────────────────────
+function computeEvSummary() {
+  const s = evSignals;
+  document.getElementById('evTotal').textContent = s.length;
+  const withD20 = s.filter(x => evAge(x) >= 20);
+  if (!withD20.length) {
+    ['evHitRate','evAvgRet','evBest','evWorst'].forEach(id => document.getElementById(id).textContent = '—');
+    return;
+  }
+  const rets = withD20.map(x => evRetAt(x, 20)).filter(r => r !== null);
+  const hits = rets.filter(r => r > 0).length;
+  const avg  = rets.length ? +(rets.reduce((a,b)=>a+b,0)/rets.length).toFixed(1) : null;
+  const best = rets.length ? +Math.max(...rets).toFixed(1) : null;
+  const worst = rets.length ? +Math.min(...rets).toFixed(1) : null;
+
+  document.getElementById('evHitRate').textContent = rets.length ? `${Math.round(hits/rets.length*100)}%` : '—';
+  document.getElementById('evAvgRet').textContent   = avg  !== null ? (avg  > 0 ? '+' : '') + avg  + '%' : '—';
+  document.getElementById('evBest').textContent     = best !== null ? (best > 0 ? '+' : '') + best + '%' : '—';
+  document.getElementById('evWorst').textContent    = worst !== null ? (worst > 0 ? '+' : '') + worst + '%' : '—';
+
+  document.getElementById('evAvgRet').style.color = avg > 0 ? 'var(--green)' : avg < 0 ? 'var(--red)' : 'var(--muted)';
+}
+
+// ── STOCK-WISE tab ─────────────────────────────────────
+function switchEvTab(tab) {
+  ['stock','date'].forEach(t => {
+    document.getElementById(`ev-${t}`).style.display = t === tab ? 'block' : 'none';
+    const btn = document.getElementById(`evtab-${t}`);
+    btn.style.color = t === tab ? 'var(--text)' : 'var(--muted)';
+    btn.style.fontWeight = t === tab ? '600' : '400';
+    btn.style.borderBottom = t === tab ? '2px solid var(--text)' : '2px solid transparent';
+  });
+  if (tab === 'date') renderEvDate();
+}
+
+function renderEvStock() {
+  const stage  = document.getElementById('evStageFilter')?.value || 'all';
+  const sortF  = document.getElementById('evSortField')?.value   || 'day0';
+  const search = (document.getElementById('evSearch')?.value     || '').toUpperCase().trim();
+
+  let sigs = evSignals.filter(s => {
+    if (stage !== 'all' && s.stage !== stage) return false;
+    if (search && !s.ticker.includes(search) && !(s.name||'').toUpperCase().includes(search)) return false;
+    return true;
+  });
+
+  // Sort
+  sigs = [...sigs].sort((a, b) => {
+    if (sortF === 'day0')    return b.day0.localeCompare(a.day0);
+    if (sortF === 'score')   return (b.score||0) - (a.score||0);
+    if (sortF === 'ret20')   { const r = (evRetAt(b,20)??-999) - (evRetAt(a,20)??-999); return r; }
+    if (sortF === 'current') { const r = (evCurrentRet(b)??-999) - (evCurrentRet(a)??-999); return r; }
+    return 0;
+  });
+
+  if (!sigs.length) {
+    document.getElementById('evStockTable').innerHTML =
+      `<div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">${evSignals.length ? 'No signals match filter' : 'No signals yet — run a full compute to start logging'}</div>`;
+    return;
+  }
+
+  const TH = s => `<th style="padding:4px 6px;font-family:var(--fm);font-size:9px;color:var(--muted);letter-spacing:0.7px;white-space:nowrap;font-weight:500;text-align:center;border-bottom:1px solid var(--border)">${s}</th>`;
+  const TD = (v, opts={}) => {
+    const c = opts.color ? `color:${opts.color};` : '';
+    const fw = opts.bold ? 'font-weight:600;' : '';
+    const al = opts.left ? 'text-align:left;' : 'text-align:center;';
+    return `<td style="padding:3px 6px;font-family:var(--fm);font-size:10px;${c}${fw}${al}vertical-align:middle;white-space:nowrap">${v}</td>`;
+  };
+
+  const rows = sigs.map(sig => {
+    const status = evStatus(sig);
+    const age    = evAge(sig);
+    const cur    = evCurrentRet(sig);
+    const r5     = evRetAt(sig, 5);
+    const r10    = evRetAt(sig, 10);
+    const r20    = evRetAt(sig, 20);
+    const r30    = evRetAt(sig, 30);
+    const r60    = evRetAt(sig, 60);
+
+    const stageLabel = _stageShort[sig.stage] || sig.stage;
+    const stageColor = _stageColEv[sig.stage] || 'var(--muted)';
+    const statusColor = _statusCol[status] || 'var(--muted)';
+
+    const vpbBadge = sig.vpbDetail && sig.vpbDetail !== 'none'
+      ? `<span style="font-size:8px;background:rgba(88,166,255,0.1);color:var(--blue);border:1px solid rgba(88,166,255,0.3);padding:1px 4px;border-radius:2px;margin-left:3px">${sig.vpbDetail.replace('_','')||''}</span>`
+      : '';
+
+    return `<tr id="evrow_${sig.id}" onclick="toggleEvRow('${sig.id}')" style="cursor:pointer;border-bottom:1px solid var(--border2)">
+      ${TD(sig.day0.slice(5), {color:'var(--muted)'})}
+      <td style="padding:3px 8px;vertical-align:middle;white-space:nowrap">
+        <span style="font-family:var(--fh);font-size:13px;letter-spacing:0.5px">${sig.ticker}</span>
+        <span style="font-family:var(--fm);font-size:9px;color:var(--muted2);margin-left:4px">${sig.sector||''}</span>
+        ${vpbBadge}
+      </td>
+      ${TD(`<span style="font-size:9px;font-weight:700;color:${stageColor}">${stageLabel}</span>`)}
+      ${TD(sig.score||0, {bold:true})}
+      ${TD(`<span style="color:var(--gold)">${sig.fScore||0}</span>/<span style="color:var(--blue)">${sig.tScore||0}</span>/<span style="color:var(--muted)">${sig.sigScore||0}</span>`)}
+      ${TD(sig.rsi?.toFixed(0)??'—', {color: sig.rsi>=50&&sig.rsi<=65?'var(--green)':sig.rsi>65?'var(--red)':'var(--muted)'})}
+      ${TD(sig.adx?.toFixed(0)??'—', {color: sig.adx>=25?'var(--green)':'var(--muted)'})}
+      ${TD('₹'+(sig.price_d0||0).toLocaleString('en-IN'))}
+      ${_retCell(r5)}
+      ${_retCell(r10)}
+      ${_retCell(r20, age<20?`D${age}`:'—')}
+      ${_retCell(r30, age<30?`D${age}`:'—')}
+      ${_retCell(r60, age<60?`D${age}`:'—')}
+      ${_retCell(cur)}
+      ${TD(`<span style="font-size:9px;font-weight:700;color:${statusColor}">${status}</span>`)}
+    </tr>
+    <tr id="evexp_${sig.id}" style="display:none;background:var(--s2)">
+      <td colspan="15" style="padding:12px 16px">
+        ${renderEvExpanded(sig)}
+      </td>
+    </tr>`;
+  });
+
+  document.getElementById('evStockTable').innerHTML = `
+    <table style="width:100%;border-collapse:collapse;min-width:900px">
+      <thead><tr style="background:var(--s3)">
+        ${TH('DATE')}${TH('TICKER')}${TH('STAGE')}${TH('SCR')}${TH('F/T/S')}${TH('RSI')}${TH('ADX')}${TH('ENTRY')}${TH('D5')}${TH('D10')}${TH('D20')}${TH('D30')}${TH('D60')}${TH('CUR')}${TH('STATUS')}
+      </tr></thead>
+      <tbody>${rows.join('')}</tbody>
+    </table>`;
+}
+
+function toggleEvRow(id) {
+  const exp = document.getElementById(`evexp_${id}`);
+  if (exp) exp.style.display = exp.style.display === 'none' ? 'table-row' : 'none';
+}
+
+function renderEvExpanded(sig) {
+  const days  = evDays(sig);
+  const p0    = sig.price_d0 || 0;
+
+  // Day-by-day return sparkline data
+  const dayReturns = days.map((d, i) => {
+    const p = sig.prices[d];
+    const ret = p0 ? +((p - p0) / p0 * 100).toFixed(2) : 0;
+    return {day: i, date: d, price: p, ret};
+  });
+
+  // Inline spark bars
+  const maxAbs = Math.max(...dayReturns.map(r => Math.abs(r.ret)), 0.1);
+  const sparkBars = dayReturns.map(r => {
+    const w = Math.round(Math.abs(r.ret) / maxAbs * 40);
+    const c = r.ret >= 0 ? 'var(--green)' : 'var(--red)';
+    const sign = r.ret >= 0 ? '+' : '';
+    return `<div style="display:flex;align-items:center;gap:4px;margin-bottom:1px">
+      <span style="font-family:var(--fm);font-size:8px;color:var(--muted);width:22px;text-align:right">D${r.day}</span>
+      <div style="width:${w}px;height:5px;background:${c};border-radius:1px;min-width:1px"></div>
+      <span style="font-family:var(--fm);font-size:8px;color:${c}">${sign}${r.ret}%</span>
+      <span style="font-family:var(--fm);font-size:7px;color:var(--muted2)">₹${r.price?.toLocaleString('en-IN')||'—'}</span>
+    </div>`;
+  }).join('');
+
+  // Variables grid
+  const vars = [
+    ['Stage',        (_stageShort[sig.stage]||sig.stage),''],
+    ['Score',        sig.score+'/63',                    ''],
+    ['F / T / S',   `${sig.fScore} / ${sig.tScore} / ${sig.sigScore}`, ''],
+    ['RSI',          sig.rsi?.toFixed(1)??'—',           sig.rsi>=50&&sig.rsi<=65?'color:var(--green)':sig.rsi>65?'color:var(--red)':''],
+    ['ADX',          sig.adx?.toFixed(1)??'—',           sig.adx>=25?'color:var(--green)':''],
+    ['PE',           sig.pe?sig.pe+'x':'—',              ''],
+    ['MCap',         sig.mcap?(sig.mcap>=1000?(sig.mcap/1000).toFixed(1)+'K Cr':sig.mcap+' Cr'):'—', ''],
+    ['EMA Cross',    sig.emaCross?'YES':'no',             sig.emaCross?'color:var(--green)':'color:var(--muted)'],
+    ['Pre-Cross',    sig.emaPreCross?'YES':'no',          sig.emaPreCross?'color:var(--green)':'color:var(--muted)'],
+    ['Pullback',     sig.emaPullback?'YES':'no',          sig.emaPullback?'color:var(--green)':'color:var(--muted)'],
+    ['Vol Confirm',  sig.volConfirm?'YES':'no',           sig.volConfirm?'color:var(--green)':'color:var(--muted)'],
+    ['Cross Score',  sig.crossScore||0,                   ''],
+    ['VPB Score',    sig.vpbScore||0,                     ''],
+    ['VPB Detail',   sig.vpbDetail||'—',                  ''],
+    ['Price Coil',   sig.priceCoiling?'YES':'no',         sig.priceCoiling?'color:var(--green)':'color:var(--muted)'],
+    ['Vol Shrink',   sig.volShrinking?'YES':'no',         sig.volShrinking?'color:var(--green)':'color:var(--muted)'],
+    ['D/E Flag',     sig.deFlag||'—',                     ''],
+    ['ROE Flag',     sig.roeFlag||'—',                    ''],
+    ['Source',       sig.source||'auto',                  'color:var(--muted)'],
+  ];
+  const varCells = vars.map(([l,v,st]) =>
+    `<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--border2)">
+      <span style="font-family:var(--fm);font-size:9px;color:var(--muted)">${l}</span>
+      <span style="font-family:var(--fm);font-size:9px;font-weight:600;${st}">${v}</span>
+    </div>`
+  ).join('');
+
+  return `<div style="display:grid;grid-template-columns:220px 1fr;gap:16px">
+    <div>
+      <div style="font-family:var(--fm);font-size:9px;color:var(--muted);letter-spacing:0.8px;margin-bottom:6px">VARIABLES AT SIGNAL</div>
+      ${varCells}
+    </div>
+    <div>
+      <div style="font-family:var(--fm);font-size:9px;color:var(--muted);letter-spacing:0.8px;margin-bottom:6px">DAY-BY-DAY RETURN vs D0 &nbsp; <span style="font-weight:400;color:var(--muted2)">(${days.length} trading days)</span></div>
+      <div style="max-height:220px;overflow-y:auto;padding-right:4px">${sparkBars || '<span style="font-family:var(--fm);font-size:10px;color:var(--muted)">No price data yet — collected during market hours</span>'}</div>
+    </div>
+  </div>`;
+}
+
+// ── DATE-WISE tab ──────────────────────────────────────
+function renderEvDateSelector() {
+  const dates = [...new Set(evSignals.map(s => s.day0))].sort().reverse();
+  const sel = document.getElementById('evDateSel');
+  if (!sel) return;
+  sel.innerHTML = dates.map(d => `<option value="${d}">${d}</option>`).join('') ||
+    '<option value="">No signals yet</option>';
+  renderEvDate();
+}
+
+function evDateNav(dir) {
+  const sel = document.getElementById('evDateSel');
+  if (!sel) return;
+  const opts = Array.from(sel.options);
+  const cur  = sel.selectedIndex;
+  const next = cur + dir;
+  if (next >= 0 && next < opts.length) {
+    sel.selectedIndex = next;
+    renderEvDate();
+  }
+}
+
+function renderEvDate() {
+  const sel  = document.getElementById('evDateSel');
+  const date = sel?.value;
+  if (!date) return;
+
+  const sigs = evSignals.filter(s => s.day0 === date);
+  document.getElementById('evDateCount').textContent = `${sigs.length} signal${sigs.length!==1?'s':''} on this date`;
+
+  if (!sigs.length) {
+    document.getElementById('evDateGrid').innerHTML =
+      '<div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:20px">No signals on this date</div>';
+    return;
+  }
+
+  // Checkpoint columns: D0, D1, D2, D3, D5, D7, D10, D15, D20, D30, D45, D60
+  const checkpoints = [0,1,2,3,5,7,10,15,20,30,45,60];
+
+  const TH = s => `<th style="padding:4px 8px;font-family:var(--fm);font-size:9px;color:var(--muted);letter-spacing:0.7px;text-align:center;border-bottom:1px solid var(--border);white-space:nowrap">${s}</th>`;
+
+  const headerCols = checkpoints.map(n => TH(n === 0 ? 'ENTRY' : `D${n}`)).join('');
+
+  const rows = sigs.map(sig => {
+    const status = evStatus(sig);
+    const stageLabel = _stageShort[sig.stage] || sig.stage;
+    const stageColor = _stageColEv[sig.stage] || 'var(--muted)';
+    const age = evAge(sig);
+
+    const entryCells = checkpoints.map(n => {
+      if (n === 0) {
+        return `<td style="padding:4px 8px;font-family:var(--fm);font-size:10px;text-align:center;white-space:nowrap">₹${(sig.price_d0||0).toLocaleString('en-IN')}</td>`;
+      }
+      const r = evRetAt(sig, n);
+      if (r === null) {
+        // Show latest available if within range
+        const latest = evCurrentRet(sig);
+        const txt = age > 0 && n <= age ? (latest !== null ? (() => {
+          const c2 = latest>0?'var(--green)':latest<0?'var(--red)':'var(--muted)';
+          return `<td style="padding:4px 8px;text-align:center;font-family:var(--fm);font-size:9px;color:${c2};opacity:0.5">${latest>0?'+':''}${latest}%</td>`;
+        })() : '<td></td>') : '<td style="text-align:center;font-family:var(--fm);font-size:9px;color:var(--border)">—</td>';
+        return typeof txt === 'string' ? txt : '<td></td>';
+      }
+      const c = r > 0 ? 'var(--green)' : r < 0 ? 'var(--red)' : 'var(--muted)';
+      const bg = r > 3 ? 'background:rgba(10,102,64,0.1)' : r < -3 ? 'background:rgba(192,21,42,0.08)' : '';
+      return `<td style="padding:4px 8px;text-align:center;font-family:var(--fm);font-size:10px;font-weight:600;color:${c};${bg};white-space:nowrap">${r>0?'+':''}${r}%</td>`;
+    }).join('');
+
+    return `<tr style="border-bottom:1px solid var(--border2)" onclick="openDetail('${sig.ticker}')" title="Open ${sig.ticker} detail">
+      <td style="padding:4px 10px;white-space:nowrap;cursor:pointer">
+        <span style="font-family:var(--fh);font-size:13px">${sig.ticker}</span>
+        <span style="font-family:var(--fm);font-size:8px;font-weight:700;color:${stageColor};margin-left:6px">${stageLabel}</span>
+      </td>
+      <td style="padding:4px 8px;text-align:center;font-family:var(--fm);font-size:10px;font-weight:600">${sig.score||'—'}</td>
+      ${entryCells}
+      <td style="padding:4px 8px;text-align:center;font-family:var(--fm);font-size:9px;font-weight:700;color:${_statusCol[status]||'var(--muted)'}">${status}</td>
+    </tr>`;
+  });
+
+  // Correlation insights row at bottom
+  const withD20 = sigs.filter(s => evAge(s) >= 20);
+  const rets20  = withD20.map(s => evRetAt(s, 20)).filter(r => r !== null);
+  const insightRow = rets20.length >= 2 ? `
+    <tr style="background:var(--s3);border-top:2px solid var(--border)">
+      <td colspan="2" style="padding:4px 10px;font-family:var(--fm);font-size:9px;color:var(--muted);letter-spacing:0.5px">BATCH AVG (D20)</td>
+      ${checkpoints.map(n => {
+        if (n === 0) return '<td></td>';
+        if (n !== 20) return '<td></td>';
+        const avg = +(rets20.reduce((a,b)=>a+b,0)/rets20.length).toFixed(1);
+        const c = avg>0?'var(--green)':avg<0?'var(--red)':'var(--muted)';
+        return `<td style="padding:4px 8px;text-align:center;font-family:var(--fm);font-size:10px;font-weight:700;color:${c}">${avg>0?'+':''}${avg}%</td>`;
+      }).join('')}
+      <td></td>
+    </tr>` : '';
+
+  document.getElementById('evDateGrid').innerHTML = `
+    <table style="width:100%;border-collapse:collapse;min-width:800px">
+      <thead><tr style="background:var(--s3)">
+        ${TH('TICKER')}${TH('SCORE')}${headerCols}${TH('STATUS')}
+      </tr></thead>
+      <tbody>${rows.join('')}${insightRow}</tbody>
+    </table>`;
+}
+
+// INIT
+renderWL();
+
+// ── Lazy-load evals when tab first opens ──────────────
+(function() {
+  const orig = window.switchTab;
+  window.switchTab = function(name, el) {
+    orig && orig(name, el);
+    if (name === 'evals' && !evSignals.length) loadEvals();
+  };
+})();
 </script>
 </body>
 </html>

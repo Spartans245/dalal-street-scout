@@ -41,6 +41,7 @@ NSE_FILE      = os.path.join(RAW_DIR,     'nse.json')
 YF_FILE       = os.path.join(RAW_DIR,     'yf.json')
 COMPUTED_FILE = os.path.join(COMPUTED_DIR,'stocks.json')
 STATUS_FILE   = os.path.join(STATUS_DIR,  'compute.json')
+SIGNALS_FILE  = os.path.join(BASE_DIR,    'data', 'signals_log.json')
 
 os.makedirs(COMPUTED_DIR, exist_ok=True)
 os.makedirs(STATUS_DIR,   exist_ok=True)
@@ -339,6 +340,119 @@ def compute_one(symbol, kite_entry, nse_fund, yf_fund):
 
 
 # ════════════════════════════════════════════════════════════════════
+# SIGNAL LOGGER — records new actionable signals to data/signals_log.json
+# Called once per full compute run (skipped in --test mode).
+# ════════════════════════════════════════════════════════════════════
+_ACTIONABLE_STAGES = {'post_cross', 'pre_cross', 'breakout', 'pullback'}
+
+
+def _calc_sig_score(s):
+    """Python replica of JS signal score: sigScore tier logic."""
+    stage = s.get('stage', 'none')
+    if stage in ('trending', 'none', 'coiling'):
+        return 0
+    vpb   = s.get('vpbScore',   0) or 0
+    cross = s.get('crossScore', 0) or 0
+    pre   = bool(s.get('emaPreCross'))
+    if pre and vpb > 0:
+        return 18 if vpb >= 10 else (14 if vpb >= 7 else 12)
+    if cross > 0:
+        return cross + (3 if stage == 'pullback' else 0)
+    if vpb > 0:
+        return vpb
+    return 0
+
+
+def log_signals(results):
+    """Detect newly-entered actionable stages; append to signals_log.json."""
+    today_str  = datetime.datetime.now().date().isoformat()
+    today_date = datetime.date.fromisoformat(today_str)
+
+    # Load existing log
+    existing = []
+    if os.path.exists(SIGNALS_FILE):
+        try:
+            with open(SIGNALS_FILE, encoding='utf-8') as f:
+                existing = json.load(f).get('signals', [])
+        except Exception:
+            pass
+
+    # Most-recent entry per ticker
+    latest = {}
+    for e in existing:
+        t = e.get('ticker', '')
+        if t and (t not in latest or e.get('day0', '') > latest[t].get('day0', '')):
+            latest[t] = e
+
+    new_count = 0
+    for s in results:
+        stage = s.get('stage', 'none')
+        if stage not in _ACTIONABLE_STAGES:
+            continue
+
+        ticker = s.get('ticker', '')
+        if not ticker:
+            continue
+
+        sig   = _calc_sig_score(s)
+        total = (s.get('fScore', 0) or 0) + (s.get('tScore', 0) or 0) + sig
+
+        # Skip if same stage already logged for this ticker within last 5 days
+        prev = latest.get(ticker)
+        if prev and prev.get('stage') == stage:
+            try:
+                gap = (today_date - datetime.date.fromisoformat(prev.get('day0', ''))).days
+                if gap < 5:
+                    continue
+            except Exception:
+                pass
+
+        entry = {
+            'id':           f'{ticker}_{today_str}',
+            'ticker':       ticker,
+            'name':         s.get('name', ticker),
+            'sector':       s.get('sector', 'Others'),
+            'day0':         today_str,
+            'stage':        stage,
+            'score':        total,
+            'fScore':       s.get('fScore',      0) or 0,
+            'tScore':       s.get('tScore',      0) or 0,
+            'sigScore':     sig,
+            'rsi':          round(s.get('rsi',   0) or 0, 1),
+            'adx':          round(s.get('adx',   0) or 0, 1),
+            'pe':           round(s.get('pe',    0) or 0, 1),
+            'mcap':         s.get('mcap',        0) or 0,
+            'board':        s.get('board',     'main'),
+            'vpbScore':     s.get('vpbScore',    0) or 0,
+            'vpbDetail':    s.get('vpbDetail', 'none'),
+            'crossScore':   s.get('crossScore',  0) or 0,
+            'emaPreCross':  bool(s.get('emaPreCross')),
+            'emaCross':     bool(s.get('emaCross')),
+            'emaPullback':  bool(s.get('emaPullback')),
+            'volConfirm':   bool(s.get('volConfirm')),
+            'priceCoiling': bool(s.get('priceCoiling')),
+            'volShrinking': bool(s.get('volShrinking')),
+            'deFlag':       s.get('deFlag'),
+            'roeFlag':      s.get('roeFlag'),
+            'price_d0':     s.get('price', 0),
+            'nifty_d0':     0,   # enriched by server if available
+            'source':       'auto',
+            'prices':       {today_str: s.get('price', 0)},
+        }
+        existing.append(entry)
+        latest[ticker] = entry
+        new_count += 1
+
+    os.makedirs(os.path.dirname(SIGNALS_FILE), exist_ok=True)
+    try:
+        with open(SIGNALS_FILE, 'w', encoding='utf-8') as f:
+            json.dump({'signals': existing}, f, ensure_ascii=False, indent=2)
+        print(f'[COMPUTE] Signals: {new_count} new → {len(existing)} total in signals_log.json')
+    except Exception as e:
+        print(f'[COMPUTE] Signal log write error (non-fatal): {e}')
+
+
+# ════════════════════════════════════════════════════════════════════
 # MAIN
 # ════════════════════════════════════════════════════════════════════
 def main():
@@ -399,6 +513,10 @@ def main():
     # Sector PE enrichment (modifies results in-place, re-scores fScore+score)
     print(f'[COMPUTE] Enriching sector PE...')
     enrich_sector_pe(results)
+
+    # Log new actionable signals for EVALS
+    if not args.test:
+        log_signals(results)
 
     # Stage counts for diagnostics
     from collections import Counter

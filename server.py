@@ -30,6 +30,8 @@ API:
   GET /api/refresh/yf          → trigger YF fundamentals + compute
   GET /api/refresh/compute     → trigger compute only
   GET /api/indices             → NIFTY 50 + SENSEX (direct Kite call)
+  GET /api/evals               → signal performance log (signals_log.json)
+  POST /api/evals/log          → manually append a signal entry
   POST /api/analyze/<ticker>   → LLM risk/reward analysis
 
 Double-click START_SERVER.bat to run.
@@ -60,6 +62,7 @@ from urllib.parse import urlparse
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 STATUS_DIR    = os.path.join(BASE_DIR, 'data', 'status')
 COMPUTED_FILE = os.path.join(BASE_DIR, 'data', 'computed', 'stocks.json')
+SIGNALS_FILE  = os.path.join(BASE_DIR, 'data', 'signals_log.json')
 PYTHON        = sys.executable
 PORT          = 5000
 LIVE_REFRESH  = 5 * 60   # seconds between price refreshes during market hours
@@ -471,6 +474,28 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
 
+        # ── EVALS — manual signal log ────────────────────────────────
+        if path == '/api/evals/log':
+            try:
+                length = int(self.headers.get('Content-Length', 0))
+                body   = self.rfile.read(length)
+                entry  = json.loads(body)
+                if os.path.exists(SIGNALS_FILE):
+                    with open(SIGNALS_FILE, encoding='utf-8') as f:
+                        data = json.load(f)
+                else:
+                    data = {'signals': []}
+                entry['source'] = 'manual'
+                d0 = entry.get('day0', '')
+                entry.setdefault('prices', {d0: entry.get('price_d0', 0)} if d0 else {})
+                data['signals'].append(entry)
+                with open(SIGNALS_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                self.send_json({'ok': True, 'count': len(data['signals'])})
+            except Exception as e:
+                self.send_json({'ok': False, 'error': str(e)}, 500)
+            return
+
         # ── LLM Risk/Reward analysis for one stock ───────────────────
         if path.startswith('/api/analyze/'):
             ticker = path.replace('/api/analyze/', '').upper().strip()
@@ -653,6 +678,19 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json({'error': str(e)})
                 except Exception:
                     pass  # browser already closed connection
+            return
+
+        # ── EVALS — signal performance log ──────────────────────────
+        if path == '/api/evals':
+            try:
+                if os.path.exists(SIGNALS_FILE):
+                    with open(SIGNALS_FILE, encoding='utf-8') as f:
+                        data = json.load(f)
+                else:
+                    data = {'signals': []}
+                self.send_json(data)
+            except Exception as e:
+                self.send_json({'signals': [], 'error': str(e)})
             return
 
         self.send_response(404); self.end_headers()

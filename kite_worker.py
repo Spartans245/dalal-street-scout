@@ -389,6 +389,44 @@ def run_scan(test_symbols=None):
 
 
 # ════════════════════════════════════════════════════════════════════
+# EVAL PRICE UPDATER — appends today's LTP to open signals
+# ════════════════════════════════════════════════════════════════════
+def _update_eval_prices(ltp_map):
+    """Append today's closing price to each open signal in signals_log.json."""
+    signals_file = os.path.join(BASE_DIR, 'data', 'signals_log.json')
+    if not os.path.exists(signals_file):
+        return
+    try:
+        with open(signals_file, encoding='utf-8') as f:
+            data = json.load(f)
+        signals = data.get('signals', [])
+        today      = get_ist().date().isoformat()
+        today_date = datetime.date.fromisoformat(today)
+        updated = 0
+        for sig in signals:
+            ticker = sig.get('ticker', '')
+            day0   = sig.get('day0', '')
+            if not ticker or not day0:
+                continue
+            try:
+                age = (today_date - datetime.date.fromisoformat(day0)).days
+            except Exception:
+                continue
+            if age > 90:          # skip signals older than 90 calendar days
+                continue
+            ltp = ltp_map.get(ticker)
+            if ltp and ltp > 0:
+                sig.setdefault('prices', {})[today] = ltp
+                updated += 1
+        if updated:
+            with open(signals_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            print(f'[KITE] Eval prices updated: {updated} open signals')
+    except Exception as e:
+        print(f'[KITE] Eval price update (non-fatal): {e}')
+
+
+# ════════════════════════════════════════════════════════════════════
 # PRICE REFRESH — patch data/computed/stocks.json with live LTP
 # Runs every 5 min during market hours (called by server or scheduler).
 # Does NOT re-run full compute — just updates price, change, upsidePct.
@@ -498,6 +536,9 @@ def run_price_refresh():
     except Exception as e:
         print(f'[KITE] Price refresh write error: {e}')
         sys.exit(1)
+
+    # Update daily eval prices for open signals
+    _update_eval_prices(ltp_map)
 
     duration = round(time.time() - t0, 1)
     print(f'[KITE] Price refresh done: {updated}/{len(stocks)} updated in {duration}s')
