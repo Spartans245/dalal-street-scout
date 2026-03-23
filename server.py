@@ -89,12 +89,13 @@ def load_kite():
 # STATE
 # ════════════════════════════════════════════════════════════════════
 state = {
-    'stocks':        [],
-    'last_updated':  None,
-    'status':        'starting',
-    'market_mode':   'unknown',
-    'count':         0,
-    'file_mtime':    0.0,
+    'stocks':             [],
+    'last_updated':       None,
+    'price_refreshed_at': None,
+    'status':             'starting',
+    'market_mode':        'unknown',
+    'count':              0,
+    'file_mtime':         0.0,
     'pipeline_pid':  None,   # orchestrator subprocess PID when running
     'indices':       {},     # {'NIFTY 50': {'price':..,'change':..}, 'SENSEX': {...}}
     'nse_pid':       None,   # nse_worker subprocess PID
@@ -163,20 +164,32 @@ def load_computed(force=False):
             except Exception:
                 pass
 
-        saved_at  = data.get('saved_at', '')
-        mode      = get_market_mode()
+        saved_at        = data.get('saved_at', '')
+        price_refreshed = data.get('price_refreshed_at', '')
+        # Fallback: read last price refresh time from price status file
+        if not price_refreshed:
+            try:
+                price_status_path = os.path.join(BASE_DIR, 'data', 'status', 'price.json')
+                with open(price_status_path) as _pf:
+                    _ps = json.load(_pf)
+                if _ps.get('status') == 'done':
+                    price_refreshed = _ps.get('saved_at', '')
+            except Exception:
+                pass
+        mode = get_market_mode()
 
         indices = data.get('indices', {})
 
         with state_lock:
-            state['stocks']       = stocks
-            state['last_updated'] = saved_at
-            state['count']        = len(stocks)
-            state['status']       = 'live' if mode == 'open' else 'eod'
-            state['market_mode']  = mode
-            state['file_mtime']   = mtime
+            state['stocks']             = stocks
+            state['last_updated']       = saved_at
+            state['price_refreshed_at'] = price_refreshed
+            state['count']              = len(stocks)
+            state['status']             = 'live' if mode == 'open' else 'eod'
+            state['market_mode']        = mode
+            state['file_mtime']         = mtime
             if indices:
-                state['indices']  = indices
+                state['indices']        = indices
 
         print(f'[SERVER] Loaded {len(stocks)} stocks from computed (saved {saved_at[:16]})')
         return True
@@ -223,7 +236,8 @@ def spawn_orchestrator(extra_args=None):
         print(f'[SERVER] Spawning: {" ".join(cmd)}')
 
         def _run():
-            proc = subprocess.Popen(cmd, cwd=BASE_DIR)
+            proc = subprocess.Popen(cmd, cwd=BASE_DIR,
+                creationflags=subprocess.BELOW_NORMAL_PRIORITY_CLASS)
             with state_lock:
                 state['pipeline_pid'] = proc.pid
                 state['status']       = 'scanning'
@@ -241,17 +255,31 @@ def spawn_orchestrator(extra_args=None):
     return True
 
 
+_price_refresh_running = False
+_price_refresh_lock    = threading.Lock()
+
 def spawn_price_refresh():
-    """Launch kite_worker.py --price-refresh in background."""
+    """Launch kite_worker.py --price-refresh in background. No-op if already running."""
+    global _price_refresh_running
+    with _price_refresh_lock:
+        if _price_refresh_running:
+            return  # already in flight
+        _price_refresh_running = True
     cmd = [PYTHON, '-W', 'ignore',
            os.path.join(BASE_DIR, 'kite_worker.py'), '--price-refresh']
     print(f'[SERVER] Spawning price refresh...')
 
     def _run():
-        proc = subprocess.Popen(cmd, cwd=BASE_DIR)
-        proc.wait()
-        if proc.returncode == 0:
-            load_computed(force=True)
+        global _price_refresh_running
+        try:
+            proc = subprocess.Popen(cmd, cwd=BASE_DIR,
+                creationflags=subprocess.BELOW_NORMAL_PRIORITY_CLASS)
+            proc.wait()
+            if proc.returncode == 0:
+                load_computed(force=True)
+        finally:
+            with _price_refresh_lock:
+                _price_refresh_running = False
 
     threading.Thread(target=_run, daemon=True).start()
 
@@ -264,7 +292,8 @@ def spawn_nse_worker(then_compute=True):
     cmd = [PYTHON, '-W', 'ignore', os.path.join(BASE_DIR, 'nse_worker.py'), '--fundamentals']
     print('[SERVER] Spawning NSE fundamentals...')
     def _run():
-        proc = subprocess.Popen(cmd, cwd=BASE_DIR)
+        proc = subprocess.Popen(cmd, cwd=BASE_DIR,
+            creationflags=subprocess.BELOW_NORMAL_PRIORITY_CLASS)
         with state_lock: state['nse_pid'] = proc.pid
         proc.wait()
         with state_lock: state['nse_pid'] = None
@@ -283,7 +312,8 @@ def spawn_yf_worker():
     cmd = [PYTHON, '-W', 'ignore', os.path.join(BASE_DIR, 'yf_worker.py'), '--fundamentals']
     print('[SERVER] Spawning YF fundamentals...')
     def _run():
-        proc = subprocess.Popen(cmd, cwd=BASE_DIR)
+        proc = subprocess.Popen(cmd, cwd=BASE_DIR,
+            creationflags=subprocess.BELOW_NORMAL_PRIORITY_CLASS)
         with state_lock: state['yf_pid'] = proc.pid
         proc.wait()
         with state_lock: state['yf_pid'] = None
@@ -302,7 +332,8 @@ def spawn_compute():
     cmd = [PYTHON, '-W', 'ignore', os.path.join(BASE_DIR, 'compute.py')]
     print('[SERVER] Spawning compute...')
     def _run():
-        proc = subprocess.Popen(cmd, cwd=BASE_DIR)
+        proc = subprocess.Popen(cmd, cwd=BASE_DIR,
+            creationflags=subprocess.BELOW_NORMAL_PRIORITY_CLASS)
         with state_lock: state['compute_pid'] = proc.pid
         proc.wait()
         with state_lock: state['compute_pid'] = None
@@ -332,8 +363,16 @@ def scheduler():
         if mode == 'open':
             spawn_price_refresh()
 
-    eod_done_today     = False
-    midday_done_today  = False
+    # Initialize flags from status files so restarts don't re-trigger completed scans
+    _today = get_ist().date().isoformat()
+    try:
+        with open(os.path.join(BASE_DIR, 'data', 'status', 'compute.json')) as _f:
+            _cs = json.load(_f)
+        _computed_today = _cs.get('status') == 'done' and (_cs.get('saved_at','') or '')[:10] == _today
+    except Exception:
+        _computed_today = False
+    eod_done_today    = _computed_today
+    midday_done_today = _computed_today
     sunday_done_this_week = False  # Sunday 1 AM full scan
 
     while True:
@@ -356,14 +395,16 @@ def scheduler():
                 midday_done_today = True
                 spawn_orchestrator(['--from', 'kite'])
             else:
-                # Price refresh every 5 min
+                # Price refresh every 5 min — skip if full scan already running
                 with state_lock:
                     mtime = state['file_mtime']
-                try:
-                    if time.time() - mtime > LIVE_REFRESH:
-                        spawn_price_refresh()
-                except Exception:
-                    pass
+                    busy  = bool(state.get('pipeline_pid') or state.get('nse_pid') or state.get('compute_pid'))
+                if not busy:
+                    try:
+                        if time.time() - mtime > LIVE_REFRESH:
+                            spawn_price_refresh()
+                    except Exception:
+                        pass
 
         # ── EOD: Full pipeline — NSE fundamentals + Kite scan + compute ──
         elif mode == 'eod' and not eod_done_today:
@@ -471,7 +512,8 @@ class Handler(BaseHTTPRequestHandler):
                     'market_mode':    state['market_mode'],
                     'last_updated':   state['last_updated'],
                     'count':          state['count'],
-                    'ist_time':       get_ist().strftime('%H:%M:%S'),
+                    'ist_time':           get_ist().strftime('%H:%M:%S'),
+                    'price_refreshed_at': state['price_refreshed_at'],
                     'fetch_progress': 100 if state['status'] not in ('scanning','starting') else 50,
                     'fetch_message':  state['status'],
                     'total_scanned':  state['count'],
@@ -484,11 +526,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/stocks':
             with state_lock:
                 data = {
-                    'status':       state['status'],
-                    'market_mode':  state['market_mode'],
-                    'last_updated': state['last_updated'],
-                    'stocks':       list(state['stocks']),
-                    'indices':      dict(state['indices']),
+                    'status':             state['status'],
+                    'market_mode':        state['market_mode'],
+                    'last_updated':       state['last_updated'],
+                    'price_refreshed_at': state['price_refreshed_at'],
+                    'stocks':             list(state['stocks']),
+                    'indices':            dict(state['indices']),
                 }
             self.send_json(data)
             return
@@ -585,6 +628,7 @@ class Handler(BaseHTTPRequestHandler):
                     'nse_universe':  read_status_file('nse_universe'),
                     'nse':           read_status_file('nse'),
                     'kite':          read_status_file('kite'),
+                    'price':         read_status_file('price'),
                     'yf':            read_status_file('yf'),
                     'compute':       read_status_file('compute'),
                 })
@@ -595,7 +639,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 kite   = load_kite()
                 keys   = ['NSE:NIFTY 50', 'BSE:SENSEX']
-                data   = kite.ltp(keys)
+                data   = kite.quote(keys)   # quote() returns ohlc.close = prev day close
                 result = {}
                 for key, label in [('NSE:NIFTY 50', 'NIFTY 50'), ('BSE:SENSEX', 'SENSEX')]:
                     entry = data.get(key, {})

@@ -435,7 +435,7 @@ def run_price_refresh():
         sym = s.get('ticker', '')
         if sym:
             instrument_keys.append(f'NSE:{sym}')
-            prev_map[sym] = s.get('price', 0)
+            prev_map[sym] = s.get('prevClose') or s.get('price', 0)
 
     # Batch LTP calls (500 per call)
     ltp_map = {}
@@ -474,7 +474,7 @@ def run_price_refresh():
     # Fetch Nifty 50 + Sensex and save alongside stocks
     try:
         idx_keys = ['NSE:NIFTY 50', 'BSE:SENSEX']
-        idx_data = kite.ltp(idx_keys)
+        idx_data = kite.quote(idx_keys)   # quote() returns OHLC + prev close
         indices  = {}
         for key, label in [('NSE:NIFTY 50', 'NIFTY 50'), ('BSE:SENSEX', 'SENSEX')]:
             entry = idx_data.get(key, {})
@@ -501,6 +501,22 @@ def run_price_refresh():
 
     duration = round(time.time() - t0, 1)
     print(f'[KITE] Price refresh done: {updated}/{len(stocks)} updated in {duration}s')
+
+    # Write price refresh status
+    price_status = {
+        'status':   'done',
+        'count':    updated,
+        'errors':   len(stocks) - updated,
+        'duration': duration,
+        'message':  f'Prices updated: {updated}/{len(stocks)} stocks in {duration}s',
+        'saved_at': get_ist().isoformat(),
+    }
+    try:
+        with open(os.path.join(STATUS_DIR, 'price.json'), 'w') as f:
+            json.dump(price_status, f, indent=2)
+    except Exception:
+        pass
+
     sys.exit(0)
 
 

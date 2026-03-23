@@ -169,7 +169,8 @@ def run_parallel_workers(workers, label):
     for name, script, args_list in workers:
         cmd = [PYTHON, '-W', 'ignore', os.path.join(BASE_DIR, script)] + args_list
         try:
-            procs[name] = subprocess.Popen(cmd, cwd=BASE_DIR)
+            procs[name] = subprocess.Popen(cmd, cwd=BASE_DIR,
+                creationflags=subprocess.BELOW_NORMAL_PRIORITY_CLASS)
         except Exception as e:
             print(f'[ORCH] Failed to launch {script}: {e}')
             procs[name] = None
@@ -246,7 +247,8 @@ def run_pipeline(test=False, from_step=None):
         yf_cmd = [PYTHON, '-W', 'ignore', os.path.join(BASE_DIR, yf_script)] + yf_args
         print(f'\n[ORCH] Launching background: YF D/E+ROE')
         try:
-            yf_proc = subprocess.Popen(yf_cmd, cwd=BASE_DIR)
+            yf_proc = subprocess.Popen(yf_cmd, cwd=BASE_DIR,
+                creationflags=subprocess.BELOW_NORMAL_PRIORITY_CLASS)
         except Exception as e:
             print(f'[ORCH] WARN: Could not launch yf_worker: {e}')
 

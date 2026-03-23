@@ -3088,11 +3088,13 @@ async function renderCtrl(){
   }catch(e){ /* ctrl/status not available on older server */ }
   const nse     = d.nse     || {};
   const kite    = d.kite    || {};
+  const price   = d.price   || {};
   const yf      = d.yf      || {};
   const compute = d.compute || {};
 
   const anyRunning = d.nse_pid || d.yf_pid || d.compute_pid || d.pipeline_pid;
   const runBadge = (pid) => pid ? ' <span class="ctrl-run">● RUNNING</span>' : '';
+  const runBadgeStatus = (s) => s==='running' ? ' <span class="ctrl-run">● RUNNING</span>' : '';
   const statusBadge = (s) => {
     if(!s) return '<span style="color:var(--muted)">—</span>';
     const c = s==='done'?'var(--green)':s==='running'?'var(--gold)':'var(--red)';
@@ -3127,7 +3129,7 @@ async function renderCtrl(){
       <!-- Universe -->
       <div>
         <div style="font-family:var(--fm);font-size:9px;font-weight:700;letter-spacing:0.5px;color:var(--muted);margin-bottom:4px;padding-bottom:3px;border-bottom:1px solid var(--border2)">
-          NSE UNIVERSE${runBadge(d.nse_pid)}
+          NSE UNIVERSE${runBadgeStatus(univ.status)}
         </div>
         <div class="ctrl-row"><span class="ctrl-lbl">Status</span><span class="ctrl-val">${statusBadge(univ.status)}</span></div>
         <div class="ctrl-row"><span class="ctrl-lbl">Last run</span><span class="ctrl-val">${fmtDT(univ.saved_at)}</span></div>
@@ -3138,7 +3140,7 @@ async function renderCtrl(){
       <!-- NSE Fundamentals -->
       <div>
         <div style="font-family:var(--fm);font-size:9px;font-weight:700;letter-spacing:0.5px;color:var(--muted);margin-bottom:4px;padding-bottom:3px;border-bottom:1px solid var(--border2)">
-          NSE FUNDAMENTALS${runBadge(d.nse_pid)}
+          NSE FUNDAMENTALS${runBadgeStatus(nse.status)}
         </div>
         <div class="ctrl-row"><span class="ctrl-lbl">Status</span><span class="ctrl-val">${statusBadge(nse.status)}</span></div>
         <div class="ctrl-row"><span class="ctrl-lbl">Last run</span><span class="ctrl-val">${fmtDT(nse.saved_at)}</span></div>
@@ -3149,7 +3151,7 @@ async function renderCtrl(){
       <!-- Kite -->
       <div>
         <div style="font-family:var(--fm);font-size:9px;font-weight:700;letter-spacing:0.5px;color:var(--muted);margin-bottom:4px;padding-bottom:3px;border-bottom:1px solid var(--border2)">
-          KITE OHLCV SCAN${runBadge(d.pipeline_pid)}
+          KITE OHLCV SCAN${runBadgeStatus(kite.status)}
         </div>
         <div class="ctrl-row"><span class="ctrl-lbl">Status</span><span class="ctrl-val">${statusBadge(kite.status)}</span></div>
         <div class="ctrl-row"><span class="ctrl-lbl">Last run</span><span class="ctrl-val">${fmtDT(kite.saved_at)}</span></div>
@@ -3218,7 +3220,7 @@ async function renderCtrl(){
     <!-- CARD 2: TECHNICALS (Kite + Compute) -->
     <div class="ctrl-card">
       <div class="ctrl-card-title">
-        <span>TECHNICALS · KITE SCAN + COMPUTE${runBadge(d.pipeline_pid)}</span>
+        <span>TECHNICALS · KITE SCAN + COMPUTE${runBadgeStatus(kite.status)}</span>
         <button class="ctrl-btn ctrl-btn-gold" id="btnKite" onclick="ctrlTrigger('/api/refresh/kite','btnKite')" ${d.nse_pid||d.pipeline_pid?'disabled':''}>▶ Run Now</button>
       </div>
       <div style="font-family:var(--fm);font-size:9px;background:rgba(210,153,34,0.06);border-radius:3px;padding:5px 8px;margin-bottom:8px;border-left:2px solid var(--gold)">
@@ -3239,8 +3241,8 @@ async function renderCtrl(){
       <div class="ctrl-row"><span class="ctrl-lbl">Compute last run</span><span class="ctrl-val">${fmtDT(compute.saved_at)}</span></div>
       <div class="ctrl-row"><span class="ctrl-lbl">Compute status</span><span class="ctrl-val">${statusBadge(compute.status)}</span></div>
       <div class="ctrl-schedule">
-        <span>⏱ 12:00 PM IST (midday) + 3:30 PM IST (EOD) · Mon–Fri</span>
-        <span>Next midday: ${nextMidday()}</span>
+        <span>⏱ Auto: 12:00 PM IST · Mon–Fri · EOD full pipeline also re-runs Kite</span>
+        <span>Next: ${nextMidday()}</span>
       </div>
     </div>
 
@@ -3273,27 +3275,58 @@ async function renderCtrl(){
 
   </div>
 
-  <!-- Price refresh + compute status footer -->
-  <div style="background:var(--s1);border:1px solid var(--border2);border-radius:4px;padding:10px 14px;margin-top:4px;display:flex;gap:24px;flex-wrap:wrap;align-items:center">
-    <div style="font-family:var(--fm);font-size:9px;color:var(--muted2)">
-      <span style="color:var(--muted);font-weight:600">PRICE REFRESH</span>
-      · kite.ltp() · every 5 min · market hours 9:15–3:30 PM
-      · last: <b style="color:var(--text)">${fmtDT(st.last_updated)}</b>
-      · stocks: <b style="color:var(--green)">${st.count||'—'}</b>
-      · mode: <b style="color:var(--blue)">${st.market_mode||'—'}</b>
+  <!-- CARD: PRICE REFRESH -->
+  <div style="background:var(--s1);border:1px solid var(--border);border-radius:4px;padding:14px 18px;margin-bottom:8px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)">
+      <div>
+        <div style="font-family:var(--fm);font-size:10px;font-weight:700;letter-spacing:1px;color:var(--blue);margin-bottom:4px">
+          PRICE REFRESH · LIVE LTP
+        </div>
+        <div style="font-family:var(--fm);font-size:9px;color:var(--muted)">
+          Fetches <b>live LTP</b> for all stocks via <b>kite.ltp()</b> + NIFTY 50 + SENSEX · auto every <b>5 min</b> during market hours (9:15–3:30 PM IST Mon–Fri)
+          · Updates price, % change, upside% in-place · no technical recalculation
+        </div>
+      </div>
+      <button class="ctrl-btn ctrl-btn-blue" style="white-space:nowrap;padding:6px 14px;font-size:11px" id="btnPrice"
+        onclick="ctrlTrigger('/api/ctrl/run_prices','btnPrice')" ${d.pipeline_pid?'disabled':''}>▶ Refresh Now</button>
     </div>
-    <div style="font-family:var(--fm);font-size:9px;color:var(--muted2)">
-      <span style="color:var(--muted);font-weight:600">COMPUTE</span>
-      · last: <b style="color:var(--text)">${fmtDT(compute.saved_at)}</b>
-      · ${statusBadge(compute.status)}
-      · stocks: <b style="color:var(--green)">${compute.count||'—'}</b>
-      · took: <b>${fmtElapsed(compute.duration)}</b>
-      <button class="ctrl-btn ctrl-btn-blue" style="margin-left:8px;padding:2px 10px;font-size:9px" id="btnCompute"
-        onclick="ctrlTrigger('/api/refresh/compute','btnCompute')" ${d.compute_pid?'disabled':''}>▶ Re-Compute</button>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">
+      <div>
+        <div style="font-family:var(--fm);font-size:9px;font-weight:700;letter-spacing:0.5px;color:var(--muted);margin-bottom:4px;padding-bottom:3px;border-bottom:1px solid var(--border2)">STATUS</div>
+        <div class="ctrl-row"><span class="ctrl-lbl">Status</span><span class="ctrl-val">${statusBadge(price.status)}</span></div>
+        <div class="ctrl-row"><span class="ctrl-lbl">Mode</span><span class="ctrl-val" style="color:var(--blue)">${st.market_mode||'—'}</span></div>
+      </div>
+      <div>
+        <div style="font-family:var(--fm);font-size:9px;font-weight:700;letter-spacing:0.5px;color:var(--muted);margin-bottom:4px;padding-bottom:3px;border-bottom:1px solid var(--border2)">LAST RUN</div>
+        <div class="ctrl-row"><span class="ctrl-lbl">Last updated</span><span class="ctrl-val">${fmtDT(price.saved_at)}</span></div>
+        <div class="ctrl-row"><span class="ctrl-lbl">Duration</span><span class="ctrl-val">${fmtElapsed(price.duration)}</span></div>
+      </div>
+      <div>
+        <div style="font-family:var(--fm);font-size:9px;font-weight:700;letter-spacing:0.5px;color:var(--muted);margin-bottom:4px;padding-bottom:3px;border-bottom:1px solid var(--border2)">TICKERS</div>
+        <div class="ctrl-row"><span class="ctrl-lbl">Updated</span><span class="ctrl-val ctrl-ok">${price.count!==undefined?price.count:'—'}</span></div>
+        <div class="ctrl-row"><span class="ctrl-lbl">Skipped</span><span class="ctrl-val">${errVal(price.errors)}</span></div>
+      </div>
+      <div>
+        <div style="font-family:var(--fm);font-size:9px;font-weight:700;letter-spacing:0.5px;color:var(--muted);margin-bottom:4px;padding-bottom:3px;border-bottom:1px solid var(--border2)">SCHEDULE</div>
+        <div class="ctrl-row"><span class="ctrl-lbl">Frequency</span><span class="ctrl-val">Every 5 min</span></div>
+        <div class="ctrl-row"><span class="ctrl-lbl">Window</span><span class="ctrl-val">9:15–3:30 IST</span></div>
+        <div class="ctrl-row"><span class="ctrl-lbl">Days</span><span class="ctrl-val">Mon–Fri</span></div>
+      </div>
+      <div>
+        <div style="font-family:var(--fm);font-size:9px;font-weight:700;letter-spacing:0.5px;color:var(--muted);margin-bottom:4px;padding-bottom:3px;border-bottom:1px solid var(--border2)">COMPUTE</div>
+        <div class="ctrl-row"><span class="ctrl-lbl">Last compute</span><span class="ctrl-val">${fmtDT(compute.saved_at)}</span></div>
+        <div class="ctrl-row"><span class="ctrl-lbl">Stocks</span><span class="ctrl-val ctrl-ok">${compute.count||'—'}</span></div>
+        <div class="ctrl-row"><span class="ctrl-lbl">Duration</span><span class="ctrl-val">${fmtElapsed(compute.duration)}</span></div>
+        <button class="ctrl-btn ctrl-btn-blue" style="margin-top:6px;padding:2px 10px;font-size:9px;width:100%" id="btnCompute"
+          onclick="ctrlTrigger('/api/refresh/compute','btnCompute')" ${d.compute_pid?'disabled':''}>▶ Re-Compute</button>
+      </div>
     </div>
-    <div style="margin-left:auto;font-family:var(--fm);font-size:9px;color:var(--muted2)">
-      Auto-refreshes every 5s · IST: ${st.ist_time||'—'}
-    </div>
+    <div style="font-family:var(--fm);font-size:8px;color:var(--muted2);margin-top:6px">${price.message||'No price refresh recorded yet this session'}</div>
+  </div>
+
+  <!-- Auto-refresh footer -->
+  <div style="font-family:var(--fm);font-size:8px;color:var(--muted2);text-align:right;padding:4px 2px">
+    Control panel auto-refreshes every 5s · IST: ${st.ist_time||'—'}
   </div>
   `;
   document.getElementById('ctrlContent').innerHTML = html;
@@ -3346,6 +3379,7 @@ let serverStatus = 'starting';
 let lastUpdated = null;
 let serverCount = 0;
 let serverLastUpdated = '';
+let serverPriceRefreshedAt = '';
 let refreshCountdown = 0;
 let dataLoaded = false;
 
@@ -3405,7 +3439,9 @@ async function pollStatus(){
       document.getElementById('progressBar').classList.remove('show');
       serverCount = d.count || 0;
       serverLastUpdated = d.last_updated || '';
+      if(d.price_refreshed_at) serverPriceRefreshedAt = d.price_refreshed_at;
       if(d.last_updated !== lastUpdated){ await loadStocks(d); fetchIndices(); }
+      else renderIndicesBar(window._lastIndexData||null);
       if(allStocks.length > 0 && document.getElementById('planEmpty').style.display !== 'none') renderPlan();
     }
 
@@ -3461,6 +3497,7 @@ async function loadStocks(statusData){
     sf.innerHTML='<option value="all">All Sectors</option>'+sectors.map(s=>`<option>${s}</option>`).join('');
     document.getElementById('scanTime').textContent=d.last_updated;
     document.getElementById('tblWrap').style.display='block';
+    if(d.price_refreshed_at) serverPriceRefreshedAt = d.price_refreshed_at;
 
     lastUpdated = d.last_updated;
     refreshCountdown = 300; // 5 min
@@ -3515,7 +3552,7 @@ function renderIndicesBar(indexData){
     </div>
     <div style="display:flex;align-items:center;gap:8px;padding:0 16px;margin-left:auto">
       <span style="font-family:var(--fm);font-size:9px;color:${connCol}">${connStr}</span>
-      ${serverLastUpdated ? `<span style="font-family:var(--fm);font-size:9px;color:var(--muted2)">· Updated ${serverLastUpdated}</span>` : ''}
+      <span style="font-family:var(--fm);font-size:9px;color:var(--muted2)">· Prices updated ${fmtDT(serverPriceRefreshedAt || serverLastUpdated)}</span>
     </div>
   </div>`;
 }

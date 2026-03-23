@@ -304,6 +304,8 @@ def main():
         duration = time.time() - t0
         write_status('done', count=len(results), errors=errors, duration=duration,
                      message=f'Fundamentals saved: {len(results)} stocks, {errors} errors')
+        write_status('done', count=len(universe), duration=duration,
+                     message=f'Universe: {len(universe)} stocks', universe=True)
         print(f'[NSE] Fundamentals done: {len(results)} stocks, {errors} errors in {duration:.0f}s')
         sys.exit(0 if errors < len(results) * 0.2 else 1)  # fail if >20% errors
 

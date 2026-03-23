@@ -270,6 +270,7 @@ def compute_one(symbol, kite_entry, nse_fund, yf_fund):
             'sector':          sector,
             'board':           board,
             'price':           price,
+            'prevClose':       prev_close,
             'change':          change,
             'pe':              pe,
             'mcap':            mcap,
@@ -416,8 +417,10 @@ def main():
 
     try:
         raw_str = _safe_json(output)
-        with open(COMPUTED_FILE, 'w', encoding='utf-8') as f:
+        tmp_file = COMPUTED_FILE + '.tmp'
+        with open(tmp_file, 'w', encoding='utf-8') as f:
             f.write(raw_str)
+        os.replace(tmp_file, COMPUTED_FILE)  # atomic swap — no half-written reads
         print(f'[COMPUTE] Saved {len(results)} stocks → {COMPUTED_FILE}')
     except Exception as e:
         msg = f'Failed to write {COMPUTED_FILE}: {e}'
