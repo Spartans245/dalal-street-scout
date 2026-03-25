@@ -178,6 +178,8 @@ def calc_technicals(hist):
         avg20_base       = 0.0
         price_coiling    = False
         vol_shrinking    = False
+        vol_ratio        = 0.0
+        close_pos        = 0.0
         try:
             if ('High' in hist.columns and 'Low' in hist.columns and
                     'Volume' in hist.columns and len(hist) >= 25):
@@ -242,6 +244,13 @@ def calc_technicals(hist):
         except:
             pass
 
+        # EMA gap % — distance between EMA14 and EMA50 as % of price
+        try:
+            _price = float(c[-1]) if len(c) else 1.0
+            ema_gap_pct = round((e14n - e50n) / (_price + 1e-10) * 100, 3)
+        except Exception:
+            ema_gap_pct = 0.0
+
         return {
             'rsi':                rsi,
             'macd':               macd,
@@ -256,6 +265,13 @@ def calc_technicals(hist):
             'ema_pullback':       ema_pullback,
             'golden':             golden,
             'adx':                adx,
+            # EMA levels & metrics
+            'ema14':              round(e14n, 2),
+            'ema50':              round(e50n, 2),
+            'ema_gap_pct':        ema_gap_pct,
+            'ema14_rising':       ema14_rising,
+            'ema14_rising_fast':  ema14_rising_fast,
+            # VPB
             'vpb_score':          vpb_score,
             'vpb_detail':         vpb_detail,
             'vpb_range_height':   vpb_range_height,
@@ -263,6 +279,8 @@ def calc_technicals(hist):
             'price_coiling':      price_coiling,
             'vol_shrinking':      vol_shrinking,
             'near_38high':        near_38high,
+            'vol_ratio':          round(float(vol_ratio),  3),
+            'close_pos':          round(float(close_pos),  3),
         }
     except Exception:
         return None

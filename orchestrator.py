@@ -201,7 +201,7 @@ STEPS = {
     'nse_fundamentals': ('nse_worker.py',  ['--fundamentals']),
     'kite_scan':        ('kite_worker.py', ['--scan']),
     'yf_fundamentals':  ('yf_worker.py',   ['--fundamentals']),
-    'compute':          ('compute.py',     []),
+    'compute':          ('compute.py',     []),      # extra args injected by run_pipeline
 }
 
 STEPS_TEST = {
@@ -213,12 +213,17 @@ STEPS_TEST = {
 }
 
 
-def run_pipeline(test=False, from_step=None):
+def run_pipeline(test=False, from_step=None, eod=False):
     """
     Run the full pipeline. Returns exit code: 0=success, 1=fatal, 2=auth.
     from_step: 'nse' | 'kite' | 'yf' | 'compute' — skip earlier steps
+    eod: if True, passes --eod to compute.py (logs top-10 EVALS signals per stage)
     """
     steps = STEPS_TEST if test else STEPS
+    if eod and not test:
+        steps = dict(steps)
+        steps['kite_scan'] = ('kite_worker.py', ['--scan', '--eod'])  # updates EVALS prices after scan
+        steps['compute']   = ('compute.py',     ['--eod'])             # logs top-10 EVALS signals
     t0    = time.time()
 
     print(f'\n{"="*60}')
@@ -299,6 +304,25 @@ def run_pipeline(test=False, from_step=None):
             print_status('yf', read_status('yf'))
             patch_yf_into_computed()   # triggers server file-watcher reload → UI refreshes
 
+    # ── Step 5: EVALS worker (EOD only) — runs after stocks.json is final ──
+    if eod and not test:
+        eval_code = run_worker('eval_worker.py', ['--eod'], label='EVALS')
+        if eval_code != 0:
+            print(f'[ORCH] WARN: eval_worker failed (exit {eval_code}) — signals_log not updated')
+        # Non-fatal: EVALS failure never blocks the scanner
+
+    # ── Step 6: Analytics worker (EOD only) — runs after eval_worker ─────────
+    if eod and not test:
+        anl_code = run_worker('analytics_worker.py', [], label='ANALYTICS')
+        if anl_code != 0:
+            print(f'[ORCH] WARN: analytics_worker failed (exit {anl_code}) — non-fatal')
+
+    # ── Step 7: Lifecycle worker (EOD only) — independent of eval_worker ──────
+    if eod and not test:
+        lc_code = run_worker('lifecycle_worker.py', [], label='LIFECYCLE')
+        if lc_code != 0:
+            print(f'[ORCH] WARN: lifecycle_worker failed (exit {lc_code}) — non-fatal')
+
     # ── Summary ───────────────────────────────────────────────────
     elapsed = round(time.time() - t0, 1)
     count   = st.get('count', 0)
@@ -318,9 +342,11 @@ def main():
     parser.add_argument('--from', dest='from_step', default=None,
                         choices=['kite', 'yf', 'compute'],
                         help='Resume pipeline from this step (skip earlier workers)')
+    parser.add_argument('--eod', action='store_true',
+                        help='EOD mode: compute.py logs top-10 EVALS signals per stage')
     args = parser.parse_args()
 
-    code = run_pipeline(test=args.test, from_step=args.from_step)
+    code = run_pipeline(test=args.test, from_step=args.from_step, eod=args.eod)
     sys.exit(code)
 
 

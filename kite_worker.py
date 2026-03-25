@@ -391,33 +391,69 @@ def run_scan(test_symbols=None):
 # ════════════════════════════════════════════════════════════════════
 # EVAL PRICE UPDATER — appends today's LTP to open signals
 # ════════════════════════════════════════════════════════════════════
-def _update_eval_prices(ltp_map):
-    """Append today's closing price to each open signal in signals_log.json."""
+def _eval_compute_outcome(sig):
+    """Compute WIN/LOSS/OPEN for a signal based on prices dict. Updates sig in-place."""
+    if sig.get('outcome') in ('WIN', 'LOSS'):
+        return   # already closed
+    prices_dict = sig.get('prices', {})
+    p0 = sig.get('price_d0', 0)
+    if not p0 or not prices_dict:
+        return
+    sorted_dates = sorted(prices_dict.keys())
+    if len(sorted_dates) < 30:
+        return
+    for day_idx, date_str in enumerate(sorted_dates):
+        price = prices_dict[date_str]
+        if not price:
+            continue
+        if price <= p0 * 0.91:
+            sig['outcome'] = 'LOSS'; sig['outcome_day'] = day_idx
+            sig['outcome_price'] = price
+            sig['outcome_ret'] = round((price - p0) / p0 * 100, 2)
+            return
+        if 30 <= day_idx <= 60 and price >= p0 * 1.15:
+            sig['outcome'] = 'WIN'; sig['outcome_day'] = day_idx
+            sig['outcome_price'] = price
+            sig['outcome_ret'] = round((price - p0) / p0 * 100, 2)
+            return
+    if len(sorted_dates) > 60:
+        sig['outcome'] = 'LOSS'; sig['outcome_day'] = 60
+        sig['outcome_price'] = prices_dict.get(sorted_dates[60], p0)
+        sig['outcome_ret'] = round((sig['outcome_price'] - p0) / p0 * 100, 2)
+
+
+def _update_eval_prices(ltp_map, nifty_ltp=0):
+    """Append today's LTP + NIFTY price to open signals; recompute outcomes."""
     signals_file = os.path.join(BASE_DIR, 'data', 'signals_log.json')
     if not os.path.exists(signals_file):
         return
     try:
         with open(signals_file, encoding='utf-8') as f:
             data = json.load(f)
-        signals = data.get('signals', [])
-        today      = get_ist().date().isoformat()
-        today_date = datetime.date.fromisoformat(today)
-        updated = 0
+        signals   = data.get('signals', [])
+        today     = get_ist().date().isoformat()
+        today_dt  = datetime.date.fromisoformat(today)
+        updated   = 0
         for sig in signals:
             ticker = sig.get('ticker', '')
             day0   = sig.get('day0', '')
             if not ticker or not day0:
                 continue
             try:
-                age = (today_date - datetime.date.fromisoformat(day0)).days
+                age = (today_dt - datetime.date.fromisoformat(day0)).days
             except Exception:
                 continue
-            if age > 90:          # skip signals older than 90 calendar days
+            if age > 90:
                 continue
             ltp = ltp_map.get(ticker)
             if ltp and ltp > 0:
                 sig.setdefault('prices', {})[today] = ltp
                 updated += 1
+            # NIFTY benchmark price alongside stock price
+            if nifty_ltp > 0:
+                sig.setdefault('nifty_prices', {})[today] = nifty_ltp
+            # Recompute outcome daily (prices grow each day)
+            _eval_compute_outcome(sig)
         if updated:
             with open(signals_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -475,19 +511,23 @@ def run_price_refresh():
             instrument_keys.append(f'NSE:{sym}')
             prev_map[sym] = s.get('prevClose') or s.get('price', 0)
 
-    # Batch LTP calls (500 per call)
-    ltp_map = {}
+    # Batch quote calls (500 per call) — quote() gives ohlc.close = yesterday's EOD price
+    ltp_map  = {}   # sym → current LTP
+    eod_map  = {}   # sym → previous day's EOD close (for correct % change)
     for i in range(0, len(instrument_keys), LTP_BATCH):
         batch = instrument_keys[i:i + LTP_BATCH]
         try:
-            result = kite.ltp(batch)
+            result = kite.quote(batch)
             for key, val in result.items():
                 sym = key.replace('NSE:', '')
                 ltp = val.get('last_price', 0)
+                eod = val.get('ohlc', {}).get('close', 0)
                 if ltp:
                     ltp_map[sym] = round(float(ltp), 2)
+                if eod:
+                    eod_map[sym] = round(float(eod), 2)
         except Exception as e:
-            print(f'[KITE] ltp() batch error: {e}')
+            print(f'[KITE] quote() batch error: {e}')
         time.sleep(0.2)
 
     # Patch stocks
@@ -498,9 +538,11 @@ def run_price_refresh():
         if not ltp:
             continue
 
-        prev = prev_map.get(sym, ltp)
-        s['price']  = ltp
-        s['change'] = round((ltp - prev) / prev * 100, 2) if prev else 0.0
+        # Use ohlc.close from Kite (yesterday's EOD) for accurate % change
+        eod = eod_map.get(sym) or prev_map.get(sym, ltp)
+        s['price']    = ltp
+        s['prevClose'] = eod   # keep updated so next refresh stays correct
+        s['change']   = round((ltp - eod) / eod * 100, 2) if eod else 0.0
 
         # Recalculate upsidePct from stored targetPrice
         tp = s.get('targetPrice')
@@ -525,20 +567,19 @@ def run_price_refresh():
     except Exception as e:
         print(f'[KITE] Index fetch error (non-fatal): {e}')
 
-    # Save patched computed file
+    # Save patched computed file — atomic write via temp file to prevent corruption
     try:
         computed['price_refreshed_at'] = get_ist().isoformat()
         raw_str = json.dumps(computed, ensure_ascii=False)
         # Guard against Infinity/NaN leaking into JSON
         raw_str = raw_str.replace('Infinity', 'null').replace('NaN', 'null')
-        with open(COMPUTED_FILE, 'w', encoding='utf-8') as f:
+        tmp_path = COMPUTED_FILE + '.tmp'
+        with open(tmp_path, 'w', encoding='utf-8') as f:
             f.write(raw_str)
+        os.replace(tmp_path, COMPUTED_FILE)   # atomic on Windows
     except Exception as e:
         print(f'[KITE] Price refresh write error: {e}')
         sys.exit(1)
-
-    # Update daily eval prices for open signals
-    _update_eval_prices(ltp_map)
 
     duration = round(time.time() - t0, 1)
     print(f'[KITE] Price refresh done: {updated}/{len(stocks)} updated in {duration}s')
@@ -569,6 +610,7 @@ def main():
     parser.add_argument('--scan',          action='store_true', help='Full OHLCV scan')
     parser.add_argument('--price-refresh', action='store_true', help='Live price patch (market hours only)')
     parser.add_argument('--test',          action='store_true', help='Test mode: 5 tickers, scan only')
+    parser.add_argument('--eod',           action='store_true', help='EOD mode: update EVALS prices after scan')
     args = parser.parse_args()
 
     if not any([args.scan, args.price_refresh, args.test]):
@@ -581,6 +623,40 @@ def main():
         run_scan(test_symbols=['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'WIPRO'])
     elif args.scan:
         run_scan()
+        if args.eod:
+            # Update EVALS signal prices with EOD closing prices (read from kite.json just written)
+            try:
+                _kite_raw = os.path.join(BASE_DIR, 'data', 'raw', 'kite.json')
+                with open(_kite_raw, encoding='utf-8') as _f:
+                    _kraw = json.load(_f)
+                _ohlcv = _kraw.get('ohlcv', {})
+                # Last row index 4 = close price
+                _ltp_map = {}
+                for _sym, _entry in _ohlcv.items():
+                    _rows = _entry.get('rows', []) if isinstance(_entry, dict) else []
+                    if _rows:
+                        try:
+                            _ltp_map[_sym] = float(_rows[-1][4])
+                        except Exception:
+                            pass
+                # NIFTY close from kite indices quote (already fetched in run_scan)
+                _nifty = 0
+                try:
+                    _kite = load_kite()
+                    _idx  = _kite.quote(['NSE:NIFTY 50'])
+                    _nifty = _idx.get('NSE:NIFTY 50', {}).get('ohlc', {}).get('close', 0) or 0
+                except Exception:
+                    pass
+                # Persist NIFTY close for eval_worker to read
+                if _nifty > 0:
+                    import datetime as _dt
+                    _nf = os.path.join(BASE_DIR, 'data', 'evals', 'nifty_close.json')
+                    os.makedirs(os.path.dirname(_nf), exist_ok=True)
+                    with open(_nf, 'w') as _nf_f:
+                        json.dump({'date': _dt.date.today().isoformat(), 'close': _nifty}, _nf_f)
+                _update_eval_prices(_ltp_map, nifty_ltp=_nifty)
+            except Exception as _e:
+                print(f'[KITE] EVALS price update (non-fatal): {_e}')
 
 
 if __name__ == '__main__':

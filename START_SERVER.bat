@@ -7,6 +7,18 @@ echo  ============================================
 echo   DALAL STREET SCOUT — Starting Server
 echo  ============================================
 echo.
+
+:: Check if server already running on port 5000
+netstat -an | findstr ":5000" | findstr "LISTENING" > nul
+if %errorlevel%==0 (
+    echo  Server is already running on port 5000.
+    echo  Opening browser...
+    echo.
+    start http://localhost:5000
+    timeout /t 3 /nobreak >nul
+    exit /b 0
+)
+
 echo  Starting server at http://localhost:5000
 echo  Opening browser...
 echo.
@@ -23,7 +35,15 @@ set CRASHES=0
 :restart
 echo  [%time%] Server starting...
 %PYTHON% -W ignore server.py
+set EXIT_CODE=%errorlevel%
 echo.
+
+:: Exit code 0 = clean exit (e.g. port already in use detected by Python)
+if %EXIT_CODE%==0 (
+    echo  Server exited cleanly.
+    exit /b 0
+)
+
 set /a CRASHES+=1
 if %CRASHES% geq 5 (
   echo  ============================================

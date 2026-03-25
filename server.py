@@ -411,10 +411,10 @@ def scheduler():
 
         # ── EOD: Full pipeline — NSE fundamentals + Kite scan + compute ──
         elif mode == 'eod' and not eod_done_today:
-            print('[SCHEDULER] EOD: triggering full pipeline (NSE + Kite + compute)...')
+            print('[SCHEDULER] EOD: triggering full pipeline (NSE + Kite + compute) + EVALS logging...')
             eod_done_today    = True
             midday_done_today = False  # reset for tomorrow
-            spawn_orchestrator()       # full: NSE fundamentals + Kite scan + compute
+            spawn_orchestrator(['--eod'])  # --eod: logs top-10 EVALS signals per stage
 
         # ── SUNDAY 1 AM: Full scan — NSE universe + fundamentals + Kite + YF + compute ──
         if day == 6 and 1*60 <= mins < 1*60+30 and not sunday_done_this_week:
@@ -459,6 +459,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type',   ctype)
             self.send_header('Content-Length', len(body))
+            if fname.endswith('.html'):
+                self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
             self.end_headers()
             self.wfile.write(body)
         except FileNotFoundError:
@@ -496,6 +498,26 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({'ok': False, 'error': str(e)}, 500)
             return
 
+        # ── EVALS — manual EOD compute trigger ───────────────────────
+        if path == '/api/evals/compute':
+            try:
+                result = subprocess.run(
+                    [sys.executable, os.path.join(BASE_DIR, 'eval_worker.py'), '--eod'],
+                    capture_output=True, text=True, timeout=120,
+                    encoding='utf-8', errors='replace'
+                )
+                ok = result.returncode == 0
+                self.send_json({
+                    'ok':     ok,
+                    'stdout': result.stdout[-3000:] if result.stdout else '',
+                    'stderr': result.stderr[-1000:] if result.stderr else '',
+                })
+            except subprocess.TimeoutExpired:
+                self.send_json({'ok': False, 'error': 'eval_worker timed out (>120s)'}, 500)
+            except Exception as e:
+                self.send_json({'ok': False, 'error': str(e)}, 500)
+            return
+
         # ── LLM Risk/Reward analysis for one stock ───────────────────
         if path.startswith('/api/analyze/'):
             ticker = path.replace('/api/analyze/', '').upper().strip()
@@ -511,6 +533,37 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 print(f'[ANALYZE] Error for {ticker}: {e}')
                 self.send_json({'error': str(e)}, 500)
+            return
+
+        # ── Kite auth — exchange request_token → access_token ────────
+        if path == '/api/kite/auth':
+            try:
+                length = int(self.headers.get('Content-Length', 0))
+                body   = json.loads(self.rfile.read(length))
+                request_token = body.get('request_token', '').strip()
+                if not request_token:
+                    self.send_json({'ok': False, 'error': 'request_token missing'}, 400)
+                    return
+                cfg_path = os.path.join(BASE_DIR, 'kite_config.json')
+                tok_path = os.path.join(BASE_DIR, 'kite_token.json')
+                with open(cfg_path) as f:
+                    cfg = json.load(f)
+                from kiteconnect import KiteConnect
+                kite = KiteConnect(api_key=cfg['api_key'])
+                data = kite.generate_session(request_token, api_secret=cfg['api_secret'])
+                token_data = {
+                    'access_token': data['access_token'],
+                    'date':         datetime.date.today().isoformat(),
+                    'user_id':      data.get('user_id', ''),
+                    'user_name':    data.get('user_name', ''),
+                    'generated_at': datetime.datetime.now().isoformat(),
+                }
+                with open(tok_path, 'w') as f:
+                    json.dump(token_data, f, indent=2)
+                print(f'[KITE] Auth success: {data.get("user_name")} ({data.get("user_id")})')
+                self.send_json({'ok': True, 'user': data.get('user_name', ''), 'user_id': data.get('user_id', '')})
+            except Exception as e:
+                self.send_json({'ok': False, 'error': str(e)}, 500)
             return
 
         self.send_response(404); self.end_headers()
@@ -659,6 +712,50 @@ class Handler(BaseHTTPRequestHandler):
                 })
             return
 
+        # ── Kite auth — open browser on server machine ──────────────
+        if path == '/api/kite/open_browser':
+            try:
+                import webbrowser
+                cfg_path = os.path.join(BASE_DIR, 'kite_config.json')
+                with open(cfg_path) as f:
+                    cfg = json.load(f)
+                from kiteconnect import KiteConnect
+                kite = KiteConnect(api_key=cfg['api_key'])
+                login_url = kite.login_url()
+                webbrowser.open(login_url)
+                print(f'[KITE] Opened browser: {login_url}')
+                self.send_json({'ok': True, 'url': login_url})
+            except Exception as e:
+                self.send_json({'ok': False, 'error': str(e)})
+            return
+
+        # ── Kite auth — login URL + token status ────────────────────
+        if path == '/api/kite/status':
+            try:
+                cfg_path = os.path.join(BASE_DIR, 'kite_config.json')
+                tok_path = os.path.join(BASE_DIR, 'kite_token.json')
+                with open(cfg_path) as f:
+                    cfg = json.load(f)
+                api_key = cfg.get('api_key', '')
+                from kiteconnect import KiteConnect
+                kite = KiteConnect(api_key=api_key)
+                login_url = kite.login_url()
+                token_info = {'valid': False, 'date': '', 'user': ''}
+                if os.path.exists(tok_path):
+                    with open(tok_path) as f:
+                        tok = json.load(f)
+                    today = datetime.date.today().isoformat()
+                    token_info = {
+                        'valid':   tok.get('date') == today and bool(tok.get('access_token')),
+                        'date':    tok.get('date', ''),
+                        'user':    tok.get('user_name', ''),
+                        'user_id': tok.get('user_id', ''),
+                    }
+                self.send_json({'ok': True, 'login_url': login_url, 'token': token_info})
+            except Exception as e:
+                self.send_json({'ok': False, 'error': str(e)})
+            return
+
         # ── Indices — NIFTY 50 + SENSEX via Kite ltp() ─────────────
         if path == '/api/indices':
             try:
@@ -693,6 +790,34 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({'signals': [], 'error': str(e)})
             return
 
+        # ── LIFECYCLE — all-stock journey tracker ─────────────────────
+        if path == '/api/lifecycle':
+            lf = os.path.join(BASE_DIR, 'data', 'lifecycle_log.json')
+            try:
+                if os.path.exists(lf):
+                    with open(lf, encoding='utf-8') as f:
+                        data = json.load(f)
+                else:
+                    data = {'version': 1, 'stocks': {}}
+                self.send_json(data)
+            except Exception as e:
+                self.send_json({'version': 1, 'stocks': {}, 'error': str(e)})
+            return
+
+        # ── EVALS — pre-computed analytics ───────────────────────────
+        if path == '/api/evals/analytics':
+            analytics_file = os.path.join(BASE_DIR, 'data', 'evals', 'analytics.json')
+            try:
+                if os.path.exists(analytics_file):
+                    with open(analytics_file, encoding='utf-8') as f:
+                        data = json.load(f)
+                else:
+                    data = {}
+                self.send_json(data)
+            except Exception as e:
+                self.send_json({'error': str(e)})
+            return
+
         self.send_response(404); self.end_headers()
 
 
@@ -708,15 +833,16 @@ def main():
   Press Ctrl+C to stop
 """)
 
-    threading.Thread(target=scheduler, daemon=True).start()
-
+    # Bind port first — exit immediately if another server is already running.
+    # This prevents duplicate scheduler threads from spawning price refreshes.
     try:
         server = ThreadingHTTPServer(('0.0.0.0', PORT), Handler)
     except OSError:
-        print(f'\n  Port {PORT} is already in use!')
-        print(f'  Close existing instance first.')
-        input('\n  Press Enter to exit...')
-        sys.exit(1)
+        print(f'\n  Port {PORT} is already in use — another server is running.')
+        print(f'  This instance will not start.')
+        sys.exit(0)   # exit 0 so START_SERVER.bat restart loop doesn't trigger
+
+    threading.Thread(target=scheduler, daemon=True).start()
 
     try:
         server.serve_forever()

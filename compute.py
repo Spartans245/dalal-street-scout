@@ -252,6 +252,18 @@ def compute_one(symbol, kite_entry, nse_fund, yf_fund):
         # ── Swing S/R levels ─────────────────────────────────────────
         sr = calc_swing_sr(highs, lows, price, window=5, cluster_pct=1.5, n=3)
 
+        # ── Backward stage snapshots for EVALS (only for actionable stages) ──
+        prev_stages = {}
+        if stage in _ACTIONABLE_STAGES:
+            for lookback in [5, 10, 20]:
+                if len(hist) > lookback + 30:
+                    try:
+                        t_hist = calc_technicals(hist.iloc[:-lookback])
+                        if t_hist:
+                            prev_stages[f'd_minus_{lookback}'] = classify_stage(t_hist)
+                    except Exception:
+                        pass
+
         # ── Chart data (last 60 closes) ──────────────────────────────
         chart_prices, chart_dates = [], []
         try:
@@ -286,6 +298,7 @@ def compute_one(symbol, kite_entry, nse_fund, yf_fund):
             'wk38Low':         wk38l,
             'wk52High':        wk52High_nse,
             'wk52Low':         wk52Low_nse,
+            'near52High':      bool(price and wk52High_nse and price >= wk52High_nse * 0.92),
             'pctFrom38High':   pct38h,
             'pctFrom38Low':    pct38l,
             'rsi':             tech['rsi']                  if tech else 50.0,
@@ -307,6 +320,13 @@ def compute_one(symbol, kite_entry, nse_fund, yf_fund):
             'avg20Vol':        tech['avg20_vol']             if tech else 0.0,
             'priceCoiling':    tech['price_coiling']         if tech else False,
             'volShrinking':    tech['vol_shrinking']         if tech else False,
+            'volRatio':        tech['vol_ratio']             if tech else 0.0,
+            'closePos':        tech['close_pos']             if tech else 0.0,
+            'ema14':           tech['ema14']                 if tech else 0.0,
+            'ema50':           tech['ema50']                 if tech else 0.0,
+            'emaGapPct':       tech['ema_gap_pct']           if tech else 0.0,
+            'ema14Rising':     tech['ema14_rising']          if tech else False,
+            'ema14RisingFast': tech['ema14_rising_fast']     if tech else False,
             'near38High':      tech['near_38high']          if tech else False,
             'stage':           stage,
             'catalysts':       [],
@@ -329,6 +349,7 @@ def compute_one(symbol, kite_entry, nse_fund, yf_fund):
             'data_source':     'kite',
             'srResistance':    sr['resistance'],
             'srSupport':       sr['support'],
+            'prevStages':      prev_stages,   # EVALS: {d_minus_5/10/20: stage}
             # Sector PE fields — filled by enrich_sector_pe() after loop
             'sectorMedianPe':  None,
             'peVsSector':      None,
@@ -363,8 +384,46 @@ def _calc_sig_score(s):
     return 0
 
 
+def _compute_outcome(sig):
+    """Compute WIN/LOSS/OPEN outcome for a signal. Updates sig in-place."""
+    prices_dict = sig.get('prices', {})
+    if not prices_dict:
+        return
+    p0 = sig.get('price_d0', 0)
+    if not p0:
+        return
+    sorted_dates = sorted(prices_dict.keys())
+    if len(sorted_dates) < 30:
+        return   # need at least 30 trading days to evaluate
+    for day_idx, date_str in enumerate(sorted_dates):
+        price = prices_dict[date_str]
+        if not price:
+            continue
+        # Stop loss: price fell ≥ 9% below entry
+        if price <= p0 * 0.91:
+            sig['outcome']       = 'LOSS'
+            sig['outcome_day']   = day_idx
+            sig['outcome_price'] = price
+            sig['outcome_ret']   = round((price - p0) / p0 * 100, 2)
+            return
+        # WIN: price ≥ 15% above entry, within D30–D60 window
+        if 30 <= day_idx <= 60 and price >= p0 * 1.15:
+            sig['outcome']       = 'WIN'
+            sig['outcome_day']   = day_idx
+            sig['outcome_price'] = price
+            sig['outcome_ret']   = round((price - p0) / p0 * 100, 2)
+            return
+    # Signal expired without reaching either threshold
+    if len(sorted_dates) > 60:
+        sig['outcome']       = 'LOSS'
+        sig['outcome_day']   = 60
+        sig['outcome_price'] = prices_dict.get(sorted_dates[60], p0)
+        sig['outcome_ret']   = round((sig['outcome_price'] - p0) / p0 * 100, 2)
+
+
 def log_signals(results):
-    """Detect newly-entered actionable stages; append to signals_log.json."""
+    """EOD 3:30 PM only: add top-10 new signals per stage (sorted by score),
+    update stage_history for existing open signals, recompute outcomes."""
     today_str  = datetime.datetime.now().date().isoformat()
     today_date = datetime.date.fromisoformat(today_str)
 
@@ -377,27 +436,47 @@ def log_signals(results):
         except Exception:
             pass
 
-    # Most-recent entry per ticker
+    # Build results lookup for stage tracking
+    results_map = {s.get('ticker', ''): s for s in results if s.get('ticker')}
+
+    # Most-recent entry per ticker (for new signal dedup)
     latest = {}
     for e in existing:
         t = e.get('ticker', '')
         if t and (t not in latest or e.get('day0', '') > latest[t].get('day0', '')):
             latest[t] = e
 
+    # ── Update existing open signals ──────────────────────────────
+    updated_count = 0
+    for sig in existing:
+        if sig.get('outcome') in ('WIN', 'LOSS'):
+            continue   # already closed — skip
+        ticker = sig.get('ticker', '')
+
+        # Append today's stage to stage_history (only if changed)
+        current_stock = results_map.get(ticker)
+        if current_stock:
+            current_stage = current_stock.get('stage', 'none')
+            hist = sig.setdefault('stage_history', [])
+            if not hist or hist[-1].get('stage') != current_stage:
+                hist.append({'date': today_str, 'stage': current_stage})
+                updated_count += 1
+
+        # Recompute outcome (only when we have ≥30 price entries)
+        _compute_outcome(sig)
+
+    # ── Add new signals — top 10 per stage by score ──────────────
     new_count = 0
+    from collections import defaultdict
+    stage_candidates = defaultdict(list)
     for s in results:
         stage = s.get('stage', 'none')
         if stage not in _ACTIONABLE_STAGES:
             continue
-
         ticker = s.get('ticker', '')
         if not ticker:
             continue
-
-        sig   = _calc_sig_score(s)
-        total = (s.get('fScore', 0) or 0) + (s.get('tScore', 0) or 0) + sig
-
-        # Skip if same stage already logged for this ticker within last 5 days
+        # Skip if same stage already logged within last 5 days
         prev = latest.get(ticker)
         if prev and prev.get('stage') == stage:
             try:
@@ -406,48 +485,78 @@ def log_signals(results):
                     continue
             except Exception:
                 pass
+        sig   = _calc_sig_score(s)
+        total = (s.get('fScore', 0) or 0) + (s.get('tScore', 0) or 0) + sig
+        stage_candidates[stage].append((total, sig, s))
 
-        entry = {
-            'id':           f'{ticker}_{today_str}',
-            'ticker':       ticker,
-            'name':         s.get('name', ticker),
-            'sector':       s.get('sector', 'Others'),
-            'day0':         today_str,
-            'stage':        stage,
-            'score':        total,
-            'fScore':       s.get('fScore',      0) or 0,
-            'tScore':       s.get('tScore',      0) or 0,
-            'sigScore':     sig,
-            'rsi':          round(s.get('rsi',   0) or 0, 1),
-            'adx':          round(s.get('adx',   0) or 0, 1),
-            'pe':           round(s.get('pe',    0) or 0, 1),
-            'mcap':         s.get('mcap',        0) or 0,
-            'board':        s.get('board',     'main'),
-            'vpbScore':     s.get('vpbScore',    0) or 0,
-            'vpbDetail':    s.get('vpbDetail', 'none'),
-            'crossScore':   s.get('crossScore',  0) or 0,
-            'emaPreCross':  bool(s.get('emaPreCross')),
-            'emaCross':     bool(s.get('emaCross')),
-            'emaPullback':  bool(s.get('emaPullback')),
-            'volConfirm':   bool(s.get('volConfirm')),
-            'priceCoiling': bool(s.get('priceCoiling')),
-            'volShrinking': bool(s.get('volShrinking')),
-            'deFlag':       s.get('deFlag'),
-            'roeFlag':      s.get('roeFlag'),
-            'price_d0':     s.get('price', 0),
-            'nifty_d0':     0,   # enriched by server if available
-            'source':       'auto',
-            'prices':       {today_str: s.get('price', 0)},
-        }
-        existing.append(entry)
-        latest[ticker] = entry
-        new_count += 1
+    # Take top 10 per stage (sorted by score descending)
+    retrigger_count = 0
+    for stage, candidates in stage_candidates.items():
+            top10 = sorted(candidates, key=lambda x: x[0], reverse=True)[:10]
+            for total, sig, s in top10:
+                ticker = s.get('ticker', '')
+
+                # If an OPEN signal already exists for this ticker, record as re-trigger
+                # (extends the tracking window; D0 stays the same)
+                prev = latest.get(ticker)
+                if prev and prev.get('outcome') == 'OPEN':
+                    rdates = prev.setdefault('retrigger_dates', [])
+                    if today_str not in rdates:
+                        rdates.append(today_str)
+                        retrigger_count += 1
+                    continue  # don't create a new entry
+
+                entry = {
+                    'id':             f'{ticker}_{today_str}',
+                    'ticker':         ticker,
+                    'name':           s.get('name', ticker),
+                    'sector':         s.get('sector', 'Others'),
+                    'day0':           today_str,
+                    'stage':          stage,
+                    'score':          total,
+                    'fScore':         s.get('fScore',      0) or 0,
+                    'tScore':         s.get('tScore',      0) or 0,
+                    'sigScore':       sig,
+                    'rsi':            round(s.get('rsi',   0) or 0, 1),
+                    'adx':            round(s.get('adx',   0) or 0, 1),
+                    'pe':             round(s.get('pe',    0) or 0, 1),
+                    'mcap':           s.get('mcap',        0) or 0,
+                    'board':          s.get('board',     'main'),
+                    'vpbScore':       s.get('vpbScore',    0) or 0,
+                    'vpbDetail':      s.get('vpbDetail', 'none'),
+                    'crossScore':     s.get('crossScore',  0) or 0,
+                    'emaPreCross':    bool(s.get('emaPreCross')),
+                    'emaCross':       bool(s.get('emaCross')),
+                    'emaPullback':    bool(s.get('emaPullback')),
+                    'volConfirm':     bool(s.get('volConfirm')),
+                    'priceCoiling':   bool(s.get('priceCoiling')),
+                    'volShrinking':   bool(s.get('volShrinking')),
+                    'deFlag':         s.get('deFlag'),
+                    'roeFlag':        s.get('roeFlag'),
+                    'price_d0':       s.get('price', 0),
+                    'nifty_d0':       0,
+                    'source':         'auto',
+                    'prices':         {today_str: s.get('price', 0)},
+                    'nifty_prices':   {},
+                    'prev_stages':    s.get('prevStages', {}),
+                    'stage_history':  [{'date': today_str, 'stage': stage}],
+                    'retrigger_dates':[],
+                    'outcome':        'OPEN',
+                    'outcome_day':    None,
+                    'outcome_price':  None,
+                    'outcome_ret':    None,
+                }
+                existing.append(entry)
+                latest[ticker] = entry
+                new_count += 1
+
+    stage_summary = {st: len(cs) for st, cs in stage_candidates.items()}
+    print(f'[COMPUTE] EVALS: candidates per stage {stage_summary} → {new_count} new, {retrigger_count} re-triggers ({len(existing)} total)')
 
     os.makedirs(os.path.dirname(SIGNALS_FILE), exist_ok=True)
     try:
         with open(SIGNALS_FILE, 'w', encoding='utf-8') as f:
             json.dump({'signals': existing}, f, ensure_ascii=False, indent=2)
-        print(f'[COMPUTE] Signals: {new_count} new → {len(existing)} total in signals_log.json')
     except Exception as e:
         print(f'[COMPUTE] Signal log write error (non-fatal): {e}')
 
@@ -458,6 +567,7 @@ def log_signals(results):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--test', action='store_true', help='Test: first 5 stocks from kite.json')
+    parser.add_argument('--eod',  action='store_true', help='EOD mode: log top-10 EVALS signals per stage')
     args = parser.parse_args()
 
     t0 = time.time()
@@ -514,9 +624,7 @@ def main():
     print(f'[COMPUTE] Enriching sector PE...')
     enrich_sector_pe(results)
 
-    # Log new actionable signals for EVALS
-    if not args.test:
-        log_signals(results)
+    # EVALS signal logging moved to eval_worker.py — do not log here
 
     # Stage counts for diagnostics
     from collections import Counter

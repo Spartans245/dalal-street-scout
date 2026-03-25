@@ -334,10 +334,16 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
     <div class="nav-item" id="nav-architecture" onclick="switchTab('architecture',this)">&#9671; Architecture</div>
   </div>
   <div class="nav-section">
+    <div style="padding:8px 16px 4px;font-size:9px;letter-spacing:1.2px;color:var(--muted2);text-transform:uppercase;font-family:var(--fm)">Evals</div>
+    <div class="nav-item" id="nav-evals-stock"     onclick="switchTab('evals-stock',this)">&#9654; Stock-Wise</div>
+    <div class="nav-item" id="nav-evals-analytics" onclick="switchTab('evals-analytics',this)">&#9654; Analytics</div>
+    <div class="nav-item" id="nav-evals-lifecycle" onclick="switchTab('evals-lifecycle',this)">&#9654; Lifecycle</div>
+  </div>
+  <div class="nav-section">
     <div style="padding:8px 16px 4px;font-size:9px;letter-spacing:1.2px;color:var(--muted2);text-transform:uppercase;font-family:var(--fm)">Educational</div>
-    <div class="nav-item" id="nav-metrics" onclick="switchTab('metrics',this)">&#9650; Metrics</div>
-    <div class="nav-item" id="nav-strategy" onclick="switchTab('strategy',this)">&#9883; Strategy</div>
-    <div class="nav-item" id="nav-evals" onclick="switchTab('evals',this)">&#9654; Evals</div>
+    <div class="nav-item" id="nav-metrics"      onclick="switchTab('metrics',this)">&#9650; Metrics</div>
+    <div class="nav-item" id="nav-strategy"     onclick="switchTab('strategy',this)">&#9883; Strategy</div>
+    <div class="nav-item" id="nav-evalslogic"   onclick="switchTab('evalslogic',this)">&#9670; Evals Logic</div>
   </div>
 </nav>
 <div class="content-area">
@@ -2860,85 +2866,452 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
 
 <div class="panel" id="tab-ctrl">
   <div class="stitle">CONTROL PANEL <span style="font-family:var(--fm);font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0">— system health &amp; manual triggers</span></div>
+  <!-- Sub-tab bar -->
+  <div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:12px;gap:0">
+    <button id="ctrlSubPipeline" onclick="showCtrlSub('pipeline')" style="padding:5px 16px;border:none;background:none;cursor:pointer;font-family:var(--fm);font-size:11px;color:var(--text);font-weight:600;border-bottom:2px solid var(--text);margin-bottom:-1px">PIPELINE</button>
+    <button id="ctrlSubKite"     onclick="showCtrlSub('kite')"     style="padding:5px 16px;border:none;background:none;cursor:pointer;font-family:var(--fm);font-size:11px;color:var(--muted);font-weight:400;border-bottom:2px solid transparent;margin-bottom:-1px">KITE AUTH</button>
+  </div>
   <div id="ctrlContent">
+    <div class="empty"><h3>LOADING...</h3></div>
+  </div>
+  <div id="ctrlKiteContent" style="display:none">
     <div class="empty"><h3>LOADING...</h3></div>
   </div>
 </div>
 <!-- ═══════════════════════════════════════════════════════════════ -->
-<!-- EVALS                                                           -->
 <!-- ═══════════════════════════════════════════════════════════════ -->
-<div class="panel" id="tab-evals">
-  <div class="stitle">EVALS <span style="font-family:var(--fm);font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0">— strategy validation · does the scanner actually work?</span></div>
+<!-- EVALS — STOCK-WISE                                              -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="panel" id="tab-evals-stock" style="padding:8px 12px">
 
-  <!-- Summary stats bar -->
-  <div id="evSummary" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px;font-family:var(--fm)">
-    <div class="sb" style="margin:0;padding:10px 14px">
-      <div style="font-size:9px;color:var(--muted);letter-spacing:0.8px;margin-bottom:4px">SIGNALS</div>
-      <div id="evTotal" style="font-size:18px;font-weight:700;color:var(--text)">—</div>
+  <!-- Compact summary strip + filters in one bar -->
+  <div style="display:flex;align-items:center;gap:0;margin-bottom:5px;font-family:var(--fm);background:var(--s2);border:1px solid var(--border);border-radius:4px;overflow:hidden">
+    <div style="display:flex;gap:0;flex:1;min-width:0">
+      <div style="padding:4px 10px;border-right:1px solid var(--border);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">SIGNALS</span><span id="evTotal" style="font-size:12px;font-weight:700">—</span></div>
+      <div style="padding:4px 10px;border-right:1px solid var(--border);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">WIN RATE</span><span id="evWinRate" style="font-size:12px;font-weight:700">—</span></div>
+      <div style="padding:4px 10px;border-right:1px solid var(--border);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">AVG RET D30</span><span id="evAvgRet" style="font-size:12px;font-weight:700">—</span></div>
+      <div style="padding:4px 10px;border-right:1px solid var(--border);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">AVG ALPHA</span><span id="evAvgAlpha" style="font-size:12px;font-weight:700">—</span></div>
+      <div style="padding:4px 10px;border-right:1px solid var(--border);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">BEST WIN</span><span id="evBest" style="font-size:12px;font-weight:700;color:var(--green)">—</span></div>
+      <div style="padding:4px 10px;border-right:1px solid var(--border);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">WORST LOSS</span><span id="evWorst" style="font-size:12px;font-weight:700;color:var(--red)">—</span></div>
+      <div style="padding:4px 10px;border-right:1px solid var(--border);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">AVG WIN DAY</span><span id="evAvgWinDay" style="font-size:12px;font-weight:700">—</span></div>
+      <div style="padding:4px 10px;border-right:1px solid var(--border);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">OPEN</span><span id="evOpen" style="font-size:12px;font-weight:700">—</span></div>
     </div>
-    <div class="sb" style="margin:0;padding:10px 14px">
-      <div style="font-size:9px;color:var(--muted);letter-spacing:0.8px;margin-bottom:4px">HIT RATE (D20)</div>
-      <div id="evHitRate" style="font-size:18px;font-weight:700;color:var(--text)">—</div>
-    </div>
-    <div class="sb" style="margin:0;padding:10px 14px">
-      <div style="font-size:9px;color:var(--muted);letter-spacing:0.8px;margin-bottom:4px">AVG RETURN D20</div>
-      <div id="evAvgRet" style="font-size:18px;font-weight:700;color:var(--text)">—</div>
-    </div>
-    <div class="sb" style="margin:0;padding:10px 14px">
-      <div style="font-size:9px;color:var(--muted);letter-spacing:0.8px;margin-bottom:4px">BEST D20</div>
-      <div id="evBest" style="font-size:18px;font-weight:700;color:var(--green)">—</div>
-    </div>
-    <div class="sb" style="margin:0;padding:10px 14px">
-      <div style="font-size:9px;color:var(--muted);letter-spacing:0.8px;margin-bottom:4px">WORST D20</div>
-      <div id="evWorst" style="font-size:18px;font-weight:700;color:var(--red)">—</div>
-    </div>
-  </div>
-
-  <!-- Sub-tab nav -->
-  <div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:14px;gap:0">
-    <button id="evtab-stock" onclick="switchEvTab('stock')" style="padding:5px 16px;border:none;background:none;cursor:pointer;font-family:var(--fm);font-size:11px;color:var(--text);font-weight:600;border-bottom:2px solid var(--text);margin-bottom:-1px;letter-spacing:0.5px">STOCK-WISE</button>
-    <button id="evtab-date"  onclick="switchEvTab('date')"  style="padding:5px 16px;border:none;background:none;cursor:pointer;font-family:var(--fm);font-size:11px;color:var(--muted);font-weight:400;border-bottom:2px solid transparent;margin-bottom:-1px;letter-spacing:0.5px">DATE-WISE</button>
-  </div>
-
-  <!-- ── STOCK-WISE sub-tab ── -->
-  <div id="ev-stock" style="display:block">
-    <!-- Filters -->
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
-      <select id="evStageFilter" onchange="renderEvStock()" style="font-family:var(--fm);font-size:10px;background:var(--s2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;cursor:pointer">
+    <!-- Filters inline right -->
+    <div style="display:flex;align-items:center;gap:4px;padding:4px 8px;flex-shrink:0">
+      <select id="evStageFilter" onchange="renderEvStock()" style="font-family:var(--fm);font-size:9px;background:var(--s1);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:3px;cursor:pointer;height:22px">
         <option value="all">All Stages</option>
-        <option value="post_cross">POST-CROSS</option>
-        <option value="pre_cross">PRE-CROSS</option>
-        <option value="breakout">BREAKOUT</option>
-        <option value="pullback">PULLBACK</option>
+        <option value="post_cross">POST-X</option>
+        <option value="pre_cross">PRE-X</option>
+        <option value="breakout">BRK</option>
+        <option value="coiling">COIL</option>
+        <option value="pullback">PULL</option>
+        <option value="trending">TREND</option>
+        <option value="none">NONE</option>
       </select>
-      <select id="evSortField" onchange="renderEvStock()" style="font-family:var(--fm);font-size:10px;background:var(--s2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;cursor:pointer">
-        <option value="day0">Sort: Date (newest)</option>
-        <option value="score">Sort: Score</option>
-        <option value="ret20">Sort: D20 Return</option>
-        <option value="current">Sort: Current Return</option>
+      <select id="evOutcomeFilter" onchange="renderEvStock()" style="font-family:var(--fm);font-size:9px;background:var(--s1);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:3px;cursor:pointer;height:22px">
+        <option value="all">All</option>
+        <option value="WIN">WIN</option>
+        <option value="LOSS">LOSS</option>
+        <option value="EXPIRED">EXP</option>
+        <option value="OPEN">OPEN</option>
       </select>
-      <input id="evSearch" oninput="renderEvStock()" placeholder="Search ticker…" style="font-family:var(--fm);font-size:10px;background:var(--s2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;width:120px">
-      <button onclick="loadEvals()" style="font-family:var(--fm);font-size:10px;background:var(--s2);border:1px solid var(--border);color:var(--muted);padding:4px 10px;border-radius:4px;cursor:pointer">⟳ Refresh</button>
-    </div>
-    <div id="evStockTable" style="overflow-x:auto">
-      <div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">Loading signals…</div>
+      <span style="font-size:9px;color:var(--muted);margin-right:-4px">From:</span>
+      <input type="date" id="evDateFilter" onchange="renderEvStock()" title="Filter by entry date" style="font-family:var(--fm);font-size:9px;background:var(--s1);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:3px;cursor:pointer;height:22px;width:106px;color-scheme:dark">
+      <select id="evSortField" onchange="renderEvStock()" style="font-family:var(--fm);font-size:9px;background:var(--s1);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:3px;cursor:pointer;height:22px">
+        <option value="tier_date">Sort: Entry Date</option>
+        <option value="score">Score</option>
+        <option value="outcome_ret">Outcome%</option>
+        <option value="current">Current%</option>
+      </select>
+      <input id="evSearch" oninput="renderEvStock()" placeholder="Search…" style="font-family:var(--fm);font-size:9px;background:var(--s1);border:1px solid var(--border);color:var(--text);padding:2px 5px;border-radius:3px;width:72px;height:22px">
+      <button onclick="loadEvalsAndRender('stock')" style="font-family:var(--fm);font-size:9px;background:var(--s1);border:1px solid var(--border);color:var(--muted);padding:2px 6px;border-radius:3px;cursor:pointer;height:22px">&#8635;</button>
     </div>
   </div>
 
-  <!-- ── DATE-WISE sub-tab ── -->
-  <div id="ev-date" style="display:none">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-      <button onclick="evDateNav(-1)" style="font-family:var(--fm);font-size:14px;background:var(--s2);border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:4px;cursor:pointer">‹</button>
-      <select id="evDateSel" onchange="renderEvDate()" style="font-family:var(--fm);font-size:11px;background:var(--s2);border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:4px;cursor:pointer;min-width:140px"></select>
-      <button onclick="evDateNav(+1)" style="font-family:var(--fm);font-size:14px;background:var(--s2);border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:4px;cursor:pointer">›</button>
-      <span id="evDateCount" style="font-family:var(--fm);font-size:10px;color:var(--muted)"></span>
-    </div>
-    <div id="evDateGrid" style="overflow-x:auto">
-      <div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">Select a date to see signals</div>
-    </div>
+  <!-- Table — maximal height -->
+  <div id="evStockTable" style="overflow:auto;height:calc(100vh - 110px);cursor:grab;user-select:none" onmousedown="evDragStart(event)" onmousemove="evDragMove(event)" onmouseup="evDragEnd()" onmouseleave="evDragEnd()">
+    <div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">Loading signals…</div>
   </div>
-
 </div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- EVALS — ANALYTICS                                               -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="panel" id="tab-evals-analytics">
+  <div class="stitle">ANALYTICS <span style="font-family:var(--fm);font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0">— win rate, returns, alpha by stage</span></div>
+  <div id="evAnalyticsContent">
+    <div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">Loading analytics…</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- EVALS — LIFECYCLE                                               -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="panel" id="tab-evals-lifecycle">
+  <div class="stitle">LIFECYCLE <span style="font-family:var(--fm);font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0">— day-by-day price journey of each signal</span></div>
+  <div id="evLifecycleContent">
+    <div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">Loading lifecycle data…</div>
+  </div>
+</div>
+<div class="panel" id="tab-evalslogic">
+  <div class="stitle">EVALS LOGIC <span style="font-family:var(--fm);font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0">— how each EVALS tab works, what it measures, and why it matters</span></div>
+
+  <!-- Sub-tab bar -->
+  <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:16px">
+    <button id="elTab-stockwise" onclick="elSwitch('stockwise')" style="font-family:var(--fm);font-size:11px;font-weight:600;padding:6px 18px;border:none;background:none;cursor:pointer;color:var(--text);border-bottom:2px solid var(--text);margin-bottom:-1px">Stock-Wise</button>
+    <button id="elTab-analytics" onclick="elSwitch('analytics')" style="font-family:var(--fm);font-size:11px;font-weight:400;padding:6px 18px;border:none;background:none;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px">Analytics</button>
+    <button id="elTab-lifecycle" onclick="elSwitch('lifecycle')" style="font-family:var(--fm);font-size:11px;font-weight:400;padding:6px 18px;border:none;background:none;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px">Lifecycle</button>
+  </div>
+
+  <div style="font-family:var(--fm);font-size:11px;line-height:1.7;color:var(--text);overflow-y:auto;max-height:calc(100vh - 130px)">
+
+
+<!-- ══ STOCK-WISE ══════════════════════════════════════════════════════ -->
+<div id="elPane-stockwise" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+
+  <!-- 1. What we're analyzing -->
+  <div style="margin-bottom:18px;grid-column:1/-1">
+    <div style="font-size:9px;letter-spacing:1.2px;color:var(--muted2);text-transform:uppercase;margin-bottom:8px;font-weight:600">① What We're Analyzing</div>
+    <p style="margin:0 0 8px 0;color:var(--muted)">We pick the top 3 stocks per phase (POST-CROSS, PRE-CROSS, BREAKOUT, COILING, PULLBACK, TRENDING) at each EOD scan and track their price day-by-day. The matrix below shows exactly what this looks like — each row is a stock, each column is a trading day from entry.</p>
+
+    <!-- Demo matrix -->
+    <div style="overflow-x:auto;border:1px solid var(--border);border-radius:4px">
+      <table style="border-collapse:collapse;table-layout:fixed;font-family:var(--fm);font-size:8px;width:100%">
+        <thead>
+          <tr style="background:var(--s2)">
+            <th style="position:sticky;left:0;background:var(--s2);padding:3px 6px;text-align:left;border-right:2px solid var(--border);border-bottom:1px solid var(--border);width:90px;font-size:7px;color:var(--muted);letter-spacing:0.5px">STOCK</th>
+            <th style="padding:2px 0;text-align:center;border-bottom:1px solid var(--border);border-right:1px solid var(--border2);width:70px;font-size:7px;color:var(--muted)">D0</th>
+            <th style="padding:2px 0;text-align:center;border-bottom:1px solid var(--border);border-right:1px solid var(--border2);width:70px;font-size:7px;color:var(--muted)">D1</th>
+            <th style="padding:2px 0;text-align:center;border-bottom:1px solid var(--border);border-right:1px solid var(--border2);width:70px;font-size:7px;color:var(--muted)">D2</th>
+            <th style="padding:2px 0;text-align:center;border-bottom:1px solid var(--border);border-right:1px solid var(--border2);width:70px;font-size:7px;color:var(--muted)">D3</th>
+            <th style="padding:2px 0;text-align:center;border-bottom:1px solid var(--border);width:70px;font-size:7px;color:var(--muted)">D4</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Stock 1: steady winner -->
+          <tr>
+            <td style="position:sticky;left:0;background:var(--s1);padding:2px 6px;border-right:2px solid var(--border);border-bottom:1px solid var(--border);overflow:hidden">
+              <div style="font-family:var(--fh);font-size:9px;font-weight:700">CONFIPET</div>
+              <div style="font-size:6.5px;color:var(--muted)"><span style="color:var(--green)">POST-X</span>·03-24</div>
+            </td>
+            <td style="padding:2px 1px;text-align:center;border-bottom:1px solid var(--border);border-right:1px solid var(--border2);border-left:3px solid #d4a017">
+              <div style="font-size:7px;color:var(--text)">₹35</div><div style="font-size:7px;color:var(--muted2)">—</div>
+            </td>
+            <td style="padding:2px 1px;text-align:center;border-bottom:1px solid var(--border);border-right:1px solid var(--border2);border-left:3px solid #d4a017">
+              <div style="font-size:7px;color:var(--text)">₹37</div><div style="font-size:7px;font-weight:600;color:var(--green)">+5.7%</div>
+            </td>
+            <td style="padding:2px 1px;text-align:center;border-bottom:1px solid var(--border);border-right:1px solid var(--border2);border-left:3px solid #d4a017">
+              <div style="font-size:5.5px;font-weight:700;color:#5a32b0;background:rgba(90,50,176,0.1);border:1px solid rgba(90,50,176,0.25);padding:0 2px;border-radius:2px;display:inline-block">TREND</div>
+              <div style="font-size:7px;color:var(--text)">₹39</div><div style="font-size:7px;font-weight:600;color:var(--green)">+11.4%</div>
+            </td>
+            <td style="padding:2px 1px;text-align:center;border-bottom:1px solid var(--border);border-right:1px solid var(--border2);background:rgba(0,200,83,0.07)">
+              <div style="font-size:7px;color:var(--text)">₹41</div><div style="font-family:var(--fh);font-size:8px;font-weight:800;color:#00c853">+17.1%</div>
+            </td>
+            <td style="padding:2px 1px;text-align:center;border-bottom:1px solid var(--border);background:rgba(0,200,83,0.07)">
+              <div style="font-size:7px;color:var(--text)">₹42</div><div style="font-family:var(--fh);font-size:8px;font-weight:800;color:#00c853">+20.0%</div>
+            </td>
+          </tr>
+          <!-- Stock 2: drops to stop zone -->
+          <tr>
+            <td style="position:sticky;left:0;background:var(--s1);padding:2px 6px;border-right:2px solid var(--border);border-bottom:1px solid var(--border);overflow:hidden">
+              <div style="font-family:var(--fh);font-size:9px;font-weight:700">MANORG</div>
+              <div style="font-size:6.5px;color:var(--muted)"><span style="color:var(--muted)">COIL</span>·03-24</div>
+            </td>
+            <td style="padding:2px 1px;text-align:center;border-bottom:1px solid var(--border);border-right:1px solid var(--border2);border-left:3px solid #d4a017">
+              <div style="font-size:7px;color:var(--text)">₹406</div><div style="font-size:7px;color:var(--muted2)">—</div>
+            </td>
+            <td style="padding:2px 1px;text-align:center;border-bottom:1px solid var(--border);border-right:1px solid var(--border2)">
+              <div style="font-size:7px;color:var(--text)">₹401</div><div style="font-size:7px;font-weight:600;color:var(--red)">-1.2%</div>
+            </td>
+            <td style="padding:2px 1px;text-align:center;border-bottom:1px solid var(--border);border-right:1px solid var(--border2)">
+              <div style="font-size:7px;color:var(--text)">₹388</div><div style="font-size:7px;font-weight:600;color:var(--red)">-4.4%</div>
+            </td>
+            <td style="padding:2px 1px;text-align:center;border-bottom:1px solid var(--border);border-right:1px solid var(--border2);background:rgba(255,23,68,0.07)">
+              <div style="font-size:5.5px;font-weight:700;color:#1547c0;background:rgba(21,71,192,0.1);border:1px solid rgba(21,71,192,0.25);padding:0 2px;border-radius:2px;display:inline-block">PULL</div>
+              <div style="font-size:7px;color:var(--text)">₹369</div><div style="font-family:var(--fh);font-size:8px;font-weight:800;color:#ff1744">-9.1%</div>
+            </td>
+            <td style="padding:2px 1px;text-align:center;border-bottom:1px solid var(--border)">
+              <span style="font-size:6px;font-weight:700;color:#ff1744;background:rgba(255,23,68,0.1);border:1px solid rgba(255,23,68,0.3);padding:0 3px;border-radius:2px">-9.1%▼</span>
+            </td>
+          </tr>
+          <!-- Stock 3: open, stage change -->
+          <tr>
+            <td style="position:sticky;left:0;background:var(--s1);padding:2px 6px;border-right:2px solid var(--border);border-bottom:1px solid var(--border);overflow:hidden">
+              <div style="font-family:var(--fh);font-size:9px;font-weight:700">GOKULAGRO</div>
+              <div style="font-size:6.5px;color:var(--muted)"><span style="color:var(--green)">POST-X</span>·03-24</div>
+            </td>
+            <td style="padding:2px 1px;text-align:center;border-bottom:1px solid var(--border);border-right:1px solid var(--border2);border-left:3px solid #d4a017">
+              <div style="font-size:7px;color:var(--text)">₹185</div><div style="font-size:7px;color:var(--muted2)">—</div>
+            </td>
+            <td style="padding:2px 1px;text-align:center;border-bottom:1px solid var(--border);border-right:1px solid var(--border2);border-left:3px solid #d4a017">
+              <div style="font-size:7px;color:var(--text)">₹188</div><div style="font-size:7px;font-weight:600;color:var(--green)">+1.6%</div>
+            </td>
+            <td style="padding:2px 1px;text-align:center;border-bottom:1px solid var(--border);border-right:1px solid var(--border2)">
+              <div style="font-size:5.5px;font-weight:700;color:#1547c0;background:rgba(21,71,192,0.1);border:1px solid rgba(21,71,192,0.25);padding:0 2px;border-radius:2px;display:inline-block">PULL</div>
+              <div style="font-size:7px;color:var(--text)">₹183</div><div style="font-size:7px;font-weight:600;color:var(--red)">-1.1%</div>
+            </td>
+            <td style="padding:2px 1px;text-align:center;border-bottom:1px solid var(--border);border-right:1px solid var(--border2);border-left:3px solid #d4a017">
+              <div style="font-size:5.5px;font-weight:700;color:var(--green);background:rgba(63,185,80,0.1);border:1px solid rgba(63,185,80,0.25);padding:0 2px;border-radius:2px;display:inline-block">POST-X</div>
+              <div style="font-size:7px;color:var(--text)">₹191</div><div style="font-size:7px;font-weight:600;color:var(--green)">+3.2%</div>
+            </td>
+            <td style="padding:2px 1px;text-align:center;border-bottom:1px solid var(--border);border-left:3px solid #d4a017">
+              <div style="font-size:7px;color:var(--text)">₹194</div><div style="font-size:7px;font-weight:600;color:var(--green)">+4.9%</div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:8px;font-size:10px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap">
+      <span><span style="display:inline-block;width:10px;height:10px;border-left:3px solid #d4a017;margin-right:4px;vertical-align:middle"></span>Re-selected into top-3 that day (any phase)</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:rgba(0,200,83,0.15);border:1px solid rgba(0,200,83,0.3);margin-right:4px;vertical-align:middle"></span>WIN zone ≥+15%</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:rgba(255,23,68,0.12);border:1px solid rgba(255,23,68,0.3);margin-right:4px;vertical-align:middle"></span>STOP zone ≤−9%</span>
+      <span>Colored pill = stage changed from previous day</span>
+    </div>
+  </div>
+
+  <!-- 2. Significance -->
+  <div style="margin-bottom:18px">
+    <div style="font-size:9px;letter-spacing:1.2px;color:var(--muted2);text-transform:uppercase;margin-bottom:8px;font-weight:600">② Why This Matters for Strategy</div>
+    <div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px 16px;font-size:10px;line-height:1.8">
+      <p style="margin:0 0 6px 0">The Stock-Wise view is your <b>signal accountability layer</b>. The scanner picks stocks every day — this tab answers: <em>did those picks actually go up?</em></p>
+      <p style="margin:0 0 6px 0"><b>Golden line persistence</b> tells you conviction strength. A stock re-selected on D1, D2, D3 is consistently ranking top-3 as new data comes in — that is a stronger signal than one that was top-3 only on D0 and then dropped off.</p>
+      <p style="margin:0 0 6px 0"><b>Stage change badges</b> reveal momentum shifts. CONFIPET moving POST-X→TREND by D2 is the ideal progression — confirms the EMA cross held and trend established. MANORG dropping to PULLBACK before hitting stop shows the entry was premature.</p>
+      <p style="margin:0">Over time this view builds your intuition: which stages at entry correlate with the fewest stop hits? Which stage progressions signal early exit?</p>
+    </div>
+  </div>
+
+  <!-- 3. Operational & display logic -->
+  <div style="margin-bottom:18px">
+    <div style="font-size:9px;letter-spacing:1.2px;color:var(--muted2);text-transform:uppercase;margin-bottom:8px;font-weight:600">③ Operational &amp; Display Logic</div>
+    <div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px 16px;font-size:10px;line-height:1.8">
+      <p style="margin:0 0 4px 0"><b>Selection</b>: Phase-tab top-3 sorted by F+T (fScore + rsiScore + adxScore) — signal score excluded as it is the tab qualifier. All-tab top-3 sorted by F+T+S. Combined, deduplicated.</p>
+      <p style="margin:0 0 4px 0"><b>Timing</b>: Stocks added only at EOD (3:35 PM). D0 price = Kite OHLCV closing price. Intraday prices are overwritten at next EOD.</p>
+      <p style="margin:0 0 4px 0"><b>Golden line</b>: <code>check_retriggers()</code> in eval_worker fires for any open signal whose current stage is in any actionable stage (not none) — phase-agnostic.</p>
+      <p style="margin:0 0 4px 0"><b>Stage badge</b>: Shown only when <code>evStageAtDay(sig, dateStr)</code> differs from previous day's stage. Computed by walking stage_history forward from D0.</p>
+      <p style="margin:0 0 4px 0"><b>WIN</b>: price ≥ D0 × 1.15. <b>LOSS</b>: price ≤ D0 × 0.91. WIN takes priority if both hit same day. After outcome, new D0 starts next cycle.</p>
+      <p style="margin:0"><b>Data source</b>: <code>data/signals_log.json</code> via <code>/api/evals</code>. Updated by eval_worker.py EOD run and kite_worker --price-refresh (intraday).</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══ ANALYTICS ═══════════════════════════════════════════════════════ -->
+<div id="elPane-analytics" style="display:none;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+
+  <!-- 1. What we're analyzing -->
+  <div style="margin-bottom:18px">
+    <div style="font-size:9px;letter-spacing:1.2px;color:var(--muted2);text-transform:uppercase;margin-bottom:8px;font-weight:600">① What We're Analyzing</div>
+    <p style="margin:0 0 8px 0;color:var(--muted)">Analytics aggregates outcomes across all signal-tier stocks to answer: <em>which entry stages, score tiers, and parameter combinations actually produce wins?</em> Below is what the analytics panels look like with sample data.</p>
+
+    <!-- Demo: win rate by stage bar chart -->
+    <div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px 16px;margin-bottom:10px">
+      <div style="font-size:8px;font-weight:600;letter-spacing:0.8px;color:var(--muted2);text-transform:uppercase;margin-bottom:10px">Win Rate by Entry Stage</div>
+      <div style="font-family:var(--fm);font-size:9px">
+        <!-- POST-CROSS -->
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <div style="width:60px;font-size:8px;font-weight:700;color:var(--green);flex-shrink:0">POST-X</div>
+          <div style="flex:1;background:var(--s3);border-radius:2px;height:14px;position:relative">
+            <div style="width:72%;height:100%;background:rgba(63,185,80,0.4);border-radius:2px"></div>
+          </div>
+          <div style="width:80px;font-size:8px;color:var(--muted);flex-shrink:0">72% · 18 sigs · +14.2%</div>
+        </div>
+        <!-- PRE-CROSS -->
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <div style="width:60px;font-size:8px;font-weight:700;color:#006651;flex-shrink:0">PRE-X</div>
+          <div style="flex:1;background:var(--s3);border-radius:2px;height:14px;position:relative">
+            <div style="width:65%;height:100%;background:rgba(0,102,81,0.35);border-radius:2px"></div>
+          </div>
+          <div style="width:80px;font-size:8px;color:var(--muted);flex-shrink:0">65% · 11 sigs · +12.8%</div>
+        </div>
+        <!-- BREAKOUT -->
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <div style="width:60px;font-size:8px;font-weight:700;color:var(--gold);flex-shrink:0">BRK</div>
+          <div style="flex:1;background:var(--s3);border-radius:2px;height:14px;position:relative">
+            <div style="width:48%;height:100%;background:rgba(210,160,30,0.35);border-radius:2px"></div>
+          </div>
+          <div style="width:80px;font-size:8px;color:var(--muted);flex-shrink:0">48% · 23 sigs · +7.1%</div>
+        </div>
+        <!-- COILING -->
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <div style="width:60px;font-size:8px;font-weight:700;color:var(--muted);flex-shrink:0">COIL</div>
+          <div style="flex:1;background:var(--s3);border-radius:2px;height:14px;position:relative">
+            <div style="width:38%;height:100%;background:rgba(139,148,158,0.3);border-radius:2px"></div>
+          </div>
+          <div style="width:80px;font-size:8px;color:var(--muted);flex-shrink:0">38% · 31 sigs · +3.4%</div>
+        </div>
+        <!-- PULLBACK -->
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:60px;font-size:8px;font-weight:700;color:#1547c0;flex-shrink:0">PULL</div>
+          <div style="flex:1;background:var(--s3);border-radius:2px;height:14px;position:relative">
+            <div style="width:55%;height:100%;background:rgba(21,71,192,0.25);border-radius:2px"></div>
+          </div>
+          <div style="width:80px;font-size:8px;color:var(--muted);flex-shrink:0">55% · 9 sigs · +9.6%</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Demo: win rate by score tier -->
+    <div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px 16px">
+      <div style="font-size:8px;font-weight:600;letter-spacing:0.8px;color:var(--muted2);text-transform:uppercase;margin-bottom:10px">Win Rate by Score Tier (F+T)</div>
+      <div style="display:flex;gap:10px">
+        <div style="flex:1;background:rgba(63,185,80,0.08);border:1px solid rgba(63,185,80,0.25);border-radius:4px;padding:10px;text-align:center">
+          <div style="font-size:8px;color:var(--muted);margin-bottom:4px">STRONG ≥41</div>
+          <div style="font-size:18px;font-weight:700;color:var(--green)">74%</div>
+          <div style="font-size:8px;color:var(--muted)">27 signals · avg +13.1%</div>
+        </div>
+        <div style="flex:1;background:rgba(210,160,30,0.08);border:1px solid rgba(210,160,30,0.25);border-radius:4px;padding:10px;text-align:center">
+          <div style="font-size:8px;color:var(--muted);margin-bottom:4px">WATCH 28–40</div>
+          <div style="font-size:18px;font-weight:700;color:var(--gold)">51%</div>
+          <div style="font-size:8px;color:var(--muted)">41 signals · avg +6.8%</div>
+        </div>
+        <div style="flex:1;background:rgba(248,81,73,0.08);border:1px solid rgba(248,81,73,0.25);border-radius:4px;padding:10px;text-align:center">
+          <div style="font-size:8px;color:var(--muted);margin-bottom:4px">SKIP &lt;28</div>
+          <div style="font-size:18px;font-weight:700;color:var(--red)">29%</div>
+          <div style="font-size:8px;color:var(--muted)">24 signals · avg −2.3%</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Significance -->
+  <div style="margin-bottom:18px">
+    <div style="font-size:9px;letter-spacing:1.2px;color:var(--muted2);text-transform:uppercase;margin-bottom:8px;font-weight:600">② Why This Matters for Strategy</div>
+    <div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px 16px;font-size:10px;line-height:1.8">
+      <p style="margin:0 0 6px 0">The analytics tab validates whether our <b>scoring system is predictive</b>. If STRONG (≥41) stocks win at 74% and SKIP (&lt;28) stocks win at 29%, the score threshold is justified. If those numbers were close, we'd need to rethink the scoring weights.</p>
+      <p style="margin:0 0 6px 0">The stage win-rate chart answers a fundamental question: <b>is earlier always better?</b> If POST-CROSS (72%) consistently beats BREAKOUT (48%), it tells us the EMA cross is the actual confirmation event and BREAKOUT entries are too early. If they converge over time, BREAKOUT entries with extra size become valid.</p>
+      <p style="margin:0">Over enough signals (target: 100+), these percentages stabilise and become <b>calibration inputs</b> — informing whether to raise the STRONG threshold, tighten the stop loss, or narrow the WIN target window.</p>
+    </div>
+  </div>
+
+  <!-- 3. Operational & display logic -->
+  <div style="margin-bottom:18px">
+    <div style="font-size:9px;letter-spacing:1.2px;color:var(--muted2);text-transform:uppercase;margin-bottom:8px;font-weight:600">③ Operational &amp; Display Logic</div>
+    <div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px 16px;font-size:10px;line-height:1.8">
+      <p style="margin:0 0 4px 0"><b>Source</b>: same <code>data/signals_log.json</code> as Stock-Wise. All analytics computed client-side in JS — no separate analytics file needed for current panels.</p>
+      <p style="margin:0 0 4px 0"><b>Closed signals only</b>: WIN/LOSS percentages computed only from signals with outcome ≠ OPEN. EXPIRED signals treated separately — they represent neither success nor failure.</p>
+      <p style="margin:0 0 4px 0"><b>Win rate formula</b>: wins ÷ (wins + losses). EXPIRED excluded from denominator to avoid penalising patient setups that neither triggered stop nor hit target within 60 days.</p>
+      <p style="margin:0 0 4px 0"><b>Alpha</b>: signal return − NIFTY 50 return over the same holding period. Alpha &gt; 0 means the signal outperformed the index regardless of market direction.</p>
+      <p style="margin:0"><b>Score tier</b>: based on F+T only (max 52 in phase tabs) — not F+T+S — so the tier reflects fundamental and technical quality independent of which signal fired.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══ LIFECYCLE ════════════════════════════════════════════════════════ -->
+<div id="elPane-lifecycle" style="display:none;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+
+  <!-- 1. What we're analyzing -->
+  <div style="margin-bottom:18px">
+    <div style="font-size:9px;letter-spacing:1.2px;color:var(--muted2);text-transform:uppercase;margin-bottom:8px;font-weight:600">① What We're Analyzing</div>
+    <p style="margin:0 0 8px 0;color:var(--muted)">Lifecycle tracks all 2535 NSE stocks through their stage journeys — not just the ones the scanner picks. The question: <em>do stocks naturally progress through COILING → BREAKOUT → PRE-CROSS → POST-CROSS → TRENDING, and does completing the full path lead to better returns?</em></p>
+
+    <!-- Demo: phase path journey -->
+    <div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px 16px;margin-bottom:10px">
+      <div style="font-size:8px;font-weight:600;letter-spacing:0.8px;color:var(--muted2);text-transform:uppercase;margin-bottom:10px">Stage Path Examples (path = sequence of first-visits)</div>
+      <div style="font-family:var(--fm);font-size:9px">
+        <!-- Path 1 -->
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;padding:6px 8px;background:rgba(63,185,80,0.06);border:1px solid rgba(63,185,80,0.2);border-radius:3px">
+          <div style="font-family:var(--fh);font-size:9px;font-weight:700;width:80px;flex-shrink:0">CONFIPET</div>
+          <div style="display:flex;align-items:center;gap:3px;flex:1">
+            <span style="font-size:7px;padding:1px 5px;background:rgba(139,148,158,0.15);border:1px solid rgba(139,148,158,0.3);border-radius:2px;color:var(--muted);font-weight:600">COIL</span>
+            <span style="font-size:7px;color:var(--muted2)">→</span>
+            <span style="font-size:7px;padding:1px 5px;background:rgba(210,160,30,0.12);border:1px solid rgba(210,160,30,0.3);border-radius:2px;color:var(--gold);font-weight:600">BRK</span>
+            <span style="font-size:7px;color:var(--muted2)">→</span>
+            <span style="font-size:7px;padding:1px 5px;background:rgba(0,102,81,0.12);border:1px solid rgba(0,102,81,0.3);border-radius:2px;color:#006651;font-weight:600">PRE-X</span>
+            <span style="font-size:7px;color:var(--muted2)">→</span>
+            <span style="font-size:7px;padding:1px 5px;background:rgba(63,185,80,0.12);border:1px solid rgba(63,185,80,0.3);border-radius:2px;color:var(--green);font-weight:600">POST-X</span>
+            <span style="font-size:7px;color:var(--muted2)">→</span>
+            <span style="font-size:7px;padding:1px 5px;background:rgba(90,50,176,0.10);border:1px solid rgba(90,50,176,0.25);border-radius:2px;color:#5a32b0;font-weight:600">TREND</span>
+          </div>
+          <span style="font-size:8px;font-weight:700;color:#00c853">+18.4% WIN</span>
+        </div>
+        <!-- Path 2 -->
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;padding:6px 8px;background:rgba(255,23,68,0.04);border:1px solid rgba(255,23,68,0.15);border-radius:3px">
+          <div style="font-family:var(--fh);font-size:9px;font-weight:700;width:80px;flex-shrink:0">MANORG</div>
+          <div style="display:flex;align-items:center;gap:3px;flex:1">
+            <span style="font-size:7px;padding:1px 5px;background:rgba(210,160,30,0.12);border:1px solid rgba(210,160,30,0.3);border-radius:2px;color:var(--gold);font-weight:600">BRK</span>
+            <span style="font-size:7px;color:var(--muted2)">→</span>
+            <span style="font-size:7px;padding:1px 5px;background:rgba(21,71,192,0.10);border:1px solid rgba(21,71,192,0.25);border-radius:2px;color:#1547c0;font-weight:600">PULL</span>
+            <span style="font-size:7px;color:var(--muted2)">→</span>
+            <span style="font-size:7px;padding:1px 5px;background:rgba(139,148,158,0.12);border:1px solid rgba(139,148,158,0.25);border-radius:2px;color:var(--muted);font-weight:600">NONE</span>
+          </div>
+          <span style="font-size:8px;font-weight:700;color:#ff1744">-9.1% LOSS</span>
+        </div>
+        <!-- Path 3 -->
+        <div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--s3);border:1px solid var(--border);border-radius:3px">
+          <div style="font-family:var(--fh);font-size:9px;font-weight:700;width:80px;flex-shrink:0">AVANTIFEED</div>
+          <div style="display:flex;align-items:center;gap:3px;flex:1">
+            <span style="font-size:7px;padding:1px 5px;background:rgba(90,50,176,0.08);border:1px solid rgba(90,50,176,0.2);border-radius:2px;color:#5a32b0;font-weight:600">TREND</span>
+            <span style="font-size:7px;color:var(--muted2)">→</span>
+            <span style="font-size:7px;padding:1px 5px;background:rgba(63,185,80,0.08);border:1px solid rgba(63,185,80,0.2);border-radius:2px;color:var(--green);font-weight:600">POST-X</span>
+          </div>
+          <span style="font-size:8px;color:var(--muted)">OPEN · D18</span>
+        </div>
+      </div>
+      <div style="margin-top:10px;font-size:9px;color:var(--muted)">Path index notation: <b>1</b>=COIL · <b>2</b>=BRK · <b>3</b>=PRE-X · <b>4</b>=POST-X · <b>5</b>=PULL · <b>6</b>=TREND &nbsp;|&nbsp; Full path "1→2→3→4→6" · Partial "2→5" · NONE excluded</div>
+    </div>
+
+    <!-- Demo: path index table -->
+    <div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px 16px">
+      <div style="font-size:8px;font-weight:600;letter-spacing:0.8px;color:var(--muted2);text-transform:uppercase;margin-bottom:8px">Path Index — Resolved Cycles</div>
+      <table style="width:100%;border-collapse:collapse;font-size:9px">
+        <tr style="border-bottom:1px solid var(--border);font-size:7px;color:var(--muted);letter-spacing:0.5px">
+          <th style="padding:3px 6px;text-align:left;font-weight:600">PATH</th>
+          <th style="padding:3px 6px;text-align:center;font-weight:600">STOCKS</th>
+          <th style="padding:3px 6px;text-align:center;font-weight:600">WIN RATE</th>
+          <th style="padding:3px 6px;text-align:center;font-weight:600">AVG WIN DAY</th>
+          <th style="padding:3px 6px;text-align:center;font-weight:600">AVG RET</th>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:3px 6px"><span style="font-size:8px;font-weight:600">1→2→3→4→6</span> <span style="font-size:7px;color:var(--muted)">Full cycle</span></td>
+          <td style="padding:3px 6px;text-align:center">43</td>
+          <td style="padding:3px 6px;text-align:center;color:#00c853;font-weight:700">78%</td>
+          <td style="padding:3px 6px;text-align:center">D34</td>
+          <td style="padding:3px 6px;text-align:center;color:var(--green)">+16.2%</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:3px 6px"><span style="font-size:8px;font-weight:600">2→4→6</span> <span style="font-size:7px;color:var(--muted)">BRK skip coil</span></td>
+          <td style="padding:3px 6px;text-align:center">67</td>
+          <td style="padding:3px 6px;text-align:center;color:var(--gold);font-weight:700">55%</td>
+          <td style="padding:3px 6px;text-align:center">D41</td>
+          <td style="padding:3px 6px;text-align:center;color:var(--green)">+9.8%</td>
+        </tr>
+        <tr>
+          <td style="padding:3px 6px"><span style="font-size:8px;font-weight:600">2→5</span> <span style="font-size:7px;color:var(--muted)">BRK→PULL no cross</span></td>
+          <td style="padding:3px 6px;text-align:center">112</td>
+          <td style="padding:3px 6px;text-align:center;color:var(--red);font-weight:700">28%</td>
+          <td style="padding:3px 6px;text-align:center">—</td>
+          <td style="padding:3px 6px;text-align:center;color:var(--red)">-3.1%</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 2. Significance -->
+  <div style="margin-bottom:18px">
+    <div style="font-size:9px;letter-spacing:1.2px;color:var(--muted2);text-transform:uppercase;margin-bottom:8px;font-weight:600">② Why This Matters for Strategy</div>
+    <div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px 16px;font-size:10px;line-height:1.8">
+      <p style="margin:0 0 6px 0">Lifecycle validates the <b>core lifecycle hypothesis</b> of the scanner: that stocks progress through a predictable sequence (COIL → BRK → PRE-X → POST-X → TREND) before delivering returns. If the path index shows that full-cycle stocks win at 78% vs partial-cycle at 28%, this is strong evidence that <b>entry timing within the lifecycle is the primary predictor of outcome</b>.</p>
+      <p style="margin:0 0 6px 0">It covers all 2535 stocks — not just the ones you traded. This means you see the <b>full distribution</b> of path outcomes, not just survivorship bias from your selected signals. Stocks that went BRK→PULL→NONE would appear in lifecycle even if you never logged them in Stock-Wise.</p>
+      <p style="margin:0">Long-term, this data answers: <em>should we enter earlier (COILING) or wait for the EMA cross (POST-CROSS)?</em> If full-cycle stocks outperform, waiting for POST-CROSS is justified and BREAKOUT entries should be smaller.</p>
+    </div>
+  </div>
+
+  <!-- 3. Operational & display logic -->
+  <div style="margin-bottom:18px">
+    <div style="font-size:9px;letter-spacing:1.2px;color:var(--muted2);text-transform:uppercase;margin-bottom:8px;font-weight:600">③ Operational &amp; Display Logic</div>
+    <div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px 16px;font-size:10px;line-height:1.8">
+      <p style="margin:0 0 4px 0"><b>Scope</b>: all 2535 NSE stocks — completely isolated from signals_log.json. Data: <code>data/lifecycle_log.json</code> written by <code>lifecycle_worker.py</code> at EOD.</p>
+      <p style="margin:0 0 4px 0"><b>D0 reset</b>: WIN → new D0 = outcome date. LOSS → new D0 = outcome date. EXPIRED (60 calendar days) → new D0 = day 61. Previous cycle saved to <code>resolved_cycles[]</code>.</p>
+      <p style="margin:0 0 4px 0"><b>Path encoding</b>: 1=COIL · 2=BRK · 3=PRE-X · 4=POST-X · 5=PULL · 6=TREND · 0=NONE (excluded). Path = deduped first-visit sequence e.g. "1→2→4→6".</p>
+      <p style="margin:0 0 4px 0"><b>D0 snapshot</b>: 36 fields captured at cycle start (RSI, ADX, EMA signals, VPB score, F/T scores, PE, D/E, mcap, sector, 52W/38W levels, S/R levels, upsidePct). Never updated mid-cycle.</p>
+      <p style="margin:0 0 4px 0"><b>Panels</b>: Panel 1 = Resolved (WIN/LOSS rows). Panel 2 = Expired. Panel 3 = Path Index table (aggregated stats per unique path). Panels start empty and populate as stocks resolve.</p>
+      <p style="margin:0"><b>Display</b>: Lifecycle tab fetches <code>/api/lifecycle</code> independently — no dependency on evSignals or signal-tier data.</p>
+    </div>
+  </div>
+</div>
+
+  </div><!-- end scroll container -->
+</div>
+
 </div><!-- end content-area -->
 </div><!-- end layout -->
 
@@ -3033,6 +3406,12 @@ const API = '/api';
 
 // ── STATE ────────────────────────────────────────────
 let allStocks  = [];
+let evSignals  = [];   // EVALS — must be declared before any function can reference it
+const _stageShort = {post_cross:'POST-X', pre_cross:'PRE-X', breakout:'BRK', pullback:'PULL', trending:'TREND', coiling:'COIL', none:'—'};
+const _stageColEv  = {post_cross:'var(--green)',pre_cross:'var(--gold)',breakout:'var(--blue)',pullback:'#c084fc',trending:'var(--muted)',coiling:'var(--muted)',none:'var(--muted)'};
+const _stagePillBg = {post_cross:'rgba(63,185,80,0.12)',  pre_cross:'rgba(210,153,34,0.12)', breakout:'rgba(88,166,255,0.12)', pullback:'rgba(192,132,252,0.12)', trending:'rgba(139,148,158,0.1)', coiling:'rgba(139,148,158,0.1)', none:'rgba(139,148,158,0.1)'};
+const _stagePillBd = {post_cross:'rgba(63,185,80,0.4)',   pre_cross:'rgba(210,153,34,0.4)',  breakout:'rgba(88,166,255,0.4)',  pullback:'rgba(192,132,252,0.4)',  trending:'rgba(139,148,158,0.3)', coiling:'rgba(139,148,158,0.3)', none:'rgba(139,148,158,0.3)'};
+const _statusCol  = {HIT:'var(--green)',STOP:'var(--red)',OPEN:'var(--muted)'};
 let activeMcap = 'all';
 let openDetailTicker = null;
 function vs(){ // visible stocks — filtered by active MCap segment
@@ -3408,6 +3787,131 @@ async function renderCtrl(){
   document.getElementById('ctrlContent').innerHTML = html;
 }
 
+let _ctrlSub = 'pipeline';
+function elSwitch(tab) {
+  ['stockwise','analytics','lifecycle'].forEach(t => {
+    const btn = document.getElementById('elTab-'+t);
+    const pane = document.getElementById('elPane-'+t);
+    const active = t === tab;
+    if(btn)  { btn.style.color = active ? 'var(--text)' : 'var(--muted)'; btn.style.fontWeight = active ? '600' : '400'; btn.style.borderBottomColor = active ? 'var(--text)' : 'transparent'; }
+    if(pane) pane.style.display = active ? 'grid' : 'none';
+  });
+}
+
+function showCtrlSub(sub){
+  _ctrlSub = sub;
+  const tabs = {pipeline:'ctrlSubPipeline', kite:'ctrlSubKite'};
+  const panels = {pipeline:'ctrlContent', kite:'ctrlKiteContent'};
+  Object.entries(tabs).forEach(([k,id])=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    const active = k===sub;
+    el.style.color = active ? 'var(--text)' : 'var(--muted)';
+    el.style.fontWeight = active ? '600' : '400';
+    el.style.borderBottomColor = active ? 'var(--text)' : 'transparent';
+  });
+  Object.entries(panels).forEach(([k,id])=>{
+    const el = document.getElementById(id);
+    if(el) el.style.display = k===sub ? '' : 'none';
+  });
+  if(sub==='kite') renderKiteAuth();
+}
+
+async function renderKiteAuth(){
+  const el = document.getElementById('ctrlKiteContent');
+  if(!el) return;
+  let d;
+  try {
+    const r = await fetch('/api/kite/status');
+    d = await r.json();
+  } catch(e) {
+    el.innerHTML = `<div style="font-family:var(--fm);font-size:11px;color:var(--red);padding:20px">Could not reach server. Make sure server.py is running.</div>`;
+    return;
+  }
+
+  if(!d.ok){
+    el.innerHTML = `<div style="font-family:var(--fm);font-size:11px;color:var(--red);padding:20px">Error: ${d.error}</div>`;
+    return;
+  }
+
+  const tok = d.token;
+  const valid = tok.valid;
+  const statusColor = valid ? 'var(--green)' : 'var(--red)';
+  const statusText  = valid
+    ? `CONNECTED — ${tok.user} (${tok.user_id})`
+    : tok.date ? `TOKEN EXPIRED — last auth: ${tok.date}` : 'NOT AUTHENTICATED';
+
+  el.innerHTML = `
+    <div style="background:var(--s1);border:1px solid var(--border);border-radius:4px;padding:20px;max-width:520px">
+
+      <!-- Status row -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--border)">
+        <div style="width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0"></div>
+        <div style="font-family:var(--fm);font-size:11px;font-weight:700;color:${statusColor}">${statusText}</div>
+      </div>
+
+      <!-- Step 1 -->
+      <div style="font-family:var(--fm);font-size:10px;font-weight:700;color:var(--muted);letter-spacing:0.5px;margin-bottom:6px">STEP 1 — OPEN KITE LOGIN</div>
+      <div style="font-family:var(--fm);font-size:10px;color:var(--muted2);margin-bottom:8px">
+        Clicks the button below — your browser opens the Zerodha login page automatically.
+      </div>
+      <button onclick="kiteOpenBrowser()" id="btnKiteOpen"
+        style="font-family:var(--fm);font-size:11px;font-weight:700;padding:7px 20px;background:var(--blue);color:#fff;border:none;border-radius:4px;cursor:pointer;margin-bottom:18px">
+        Open Kite Login in Browser
+      </button>
+
+      <!-- Step 2 -->
+      <div style="font-family:var(--fm);font-size:10px;font-weight:700;color:var(--muted);letter-spacing:0.5px;margin-bottom:6px">STEP 2 — PASTE REQUEST TOKEN</div>
+      <div style="font-family:var(--fm);font-size:10px;color:var(--muted2);margin-bottom:8px">
+        After login, Zerodha redirects to <code style="background:var(--s2);padding:1px 4px;border-radius:2px">127.0.0.1/?request_token=XXXX</code>
+        — page shows "can't connect" which is normal. Copy only the token value from the URL bar.
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="kiteReqToken" placeholder="Paste request_token here…"
+          style="flex:1;font-family:var(--fm);font-size:11px;padding:6px 10px;background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--text);outline:none">
+        <button onclick="submitKiteToken()"
+          style="font-family:var(--fm);font-size:11px;font-weight:700;padding:6px 18px;background:var(--green);color:#fff;border:none;border-radius:4px;cursor:pointer">
+          Connect
+        </button>
+      </div>
+      <div id="kiteAuthMsg" style="font-family:var(--fm);font-size:10px;margin-top:8px;min-height:16px"></div>
+    </div>
+  `;
+}
+
+async function kiteOpenBrowser(){
+  const btn = document.getElementById('btnKiteOpen');
+  if(btn){ btn.textContent='Opening…'; btn.disabled=true; }
+  try {
+    const r = await fetch('/api/kite/open_browser');
+    const d = await r.json();
+    if(btn){ btn.textContent = d.ok ? 'Browser Opened ✓' : 'Error — check terminal'; btn.disabled=false; }
+  } catch(e){
+    if(btn){ btn.textContent='Failed — check server'; btn.disabled=false; }
+  }
+}
+
+async function submitKiteToken(){
+  const inp = document.getElementById('kiteReqToken');
+  const msg = document.getElementById('kiteAuthMsg');
+  const token = (inp?.value || '').trim();
+  if(!token){ if(msg){ msg.style.color='var(--red)'; msg.textContent='Paste the request_token first.'; } return; }
+  if(msg){ msg.style.color='var(--muted)'; msg.textContent='Connecting…'; }
+  try {
+    const r = await fetch('/api/kite/auth', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({request_token: token})});
+    const d = await r.json();
+    if(d.ok){
+      if(msg){ msg.style.color='var(--green)'; msg.textContent='Connected as ' + d.user + ' (' + d.user_id + ')'; }
+      if(inp) inp.value = '';
+      setTimeout(renderKiteAuth, 1000);
+    } else {
+      if(msg){ msg.style.color='var(--red)'; msg.textContent='Error: ' + d.error; }
+    }
+  } catch(e){
+    if(msg){ msg.style.color='var(--red)'; msg.textContent='Request failed — check server.'; }
+  }
+}
+
 function startCtrlPoll(){
   renderCtrl();
   ctrlPollTimer = setInterval(renderCtrl, 5000);
@@ -3572,7 +4076,7 @@ async function loadStocks(statusData){
     const sf=document.getElementById('sectorFilter');
     sf.innerHTML='<option value="all">All Sectors</option>'+sectors.map(s=>`<option>${s}</option>`).join('');
     document.getElementById('scanTime').textContent=d.last_updated;
-    document.getElementById('tblWrap').style.display='block';
+    const _tw = document.getElementById('tblWrap'); if (_tw) _tw.style.display='block';
     if(d.price_refreshed_at) serverPriceRefreshedAt = d.price_refreshed_at;
 
     lastUpdated = d.last_updated;
@@ -3713,24 +4217,20 @@ function renderPlan(){
     { key:'trending',   label:'TRENDING',   color:'#5a32b0', x:685, w:215, desc:'Uptrend · wait for signal' },
   ];
 
-  const calcPipeScore = s => {
-    const t = rsiScore(s.rsi) + adxScore(s.adx);
-    const sig = (()=>{
-      if(s.stage==='trending') return 0;
-      if(s.emaPreCross && s.vpbScore>0) return s.vpbScore>=10?18:s.vpbScore>=7?14:12;
-      if(s.crossScore>0) return s.crossScore + (s.stage==='pullback'?3:0);
-      if(s.vpbScore>0) return s.vpbScore;
-      return 0;
-    })();
-    return s.fScore + t + sig;
-  };
+  const calcPipeScore = s => (s.fScore||0) + rsiScore(s.rsi) + adxScore(s.adx); // F+T only — phase tiles sort consistent with phase tab
 
   const pipeData = pipeStages.map(st => ({
     ...st,
     count: st.key==='_all' ? allStocks.length : allStocks.filter(s=>s.stage===st.key).length,
     top: st.key==='_all' ? [] : [...allStocks].filter(s=>s.stage===st.key)
       .map(s=>({...s,_ps:calcPipeScore(s)}))
-      .sort((a,b)=>b._ps-a._ps)
+      .sort((a,b)=>{
+        const d=b._ps-a._ps;
+        if(d!==0) return d;
+        const au=(a.upsidePct!=null?+a.upsidePct:-999),bu=(b.upsidePct!=null?+b.upsidePct:-999);
+        if(bu!==au) return bu-au;
+        return (b.mcap||0)-(a.mcap||0);
+      })
       .slice(0,3)
   }));
 
@@ -3896,7 +4396,7 @@ function renderPlan(){
 }
 
 // ── STAGE VIEW ───────────────────────────────────────
-function setStage(stage){ phaseMode = false; activeStage = stage; renderStages(); }
+function setStage(stage){ phaseMode = false; activeStage = stage; sortState = {col:'score', asc:false}; renderStages(); }
 
 function renderStages(){
   const stages = ['all','post_cross','pre_cross','breakout','coiling','pullback','trending'];
@@ -3997,6 +4497,8 @@ function renderStages(){
   if(sec !== 'all') stocks = stocks.filter(x => x.sector === sec);
   if(activeLiq > 0) stocks = stocks.filter(x => (x.dailyVol||0) >= activeLiq);
 
+  // No pre-sort — final sort on recomputed scores handles all ordering
+
   const counts = {};
   stages.forEach(st => counts[st] = st === 'all' ? stocks.length : stocks.filter(x => x.stage === st).length);
 
@@ -4067,23 +4569,41 @@ function renderStages(){
       // ALL tab: full score = F + T + signal strength (max 63)
       // Stage tabs: score = F + T only (max 42) — signal is already the tab qualifier
       const score = activeStage === 'all' ? x.fScore + ra + sigScore : x.fScore + ra;
-      // Compute upside for sorting when server hasn't provided it
+      // Compute upside for display and sorting
+      const _wkH = x.wk38High || x.wk52High;
       const upsidePct = x.upsidePct != null ? x.upsidePct
-        : ((x.wk38High||x.wk52High) && (x.wk38High||x.wk52High) > x.price ? +(((x.wk38High||x.wk52High) - x.price) / x.price * 100).toFixed(1) : null);
-      return {...x, tScore: ra, score, sigScore, upsidePct};
+        : (_wkH && _wkH > x.price ? +((_wkH - x.price) / x.price * 100).toFixed(1) : null);
+      // _su: guaranteed numeric sort key for upsidePct tiebreak (never null)
+      const _su = (upsidePct != null) ? +upsidePct : (_wkH && _wkH > x.price ? +(_wkH - x.price) / x.price * 100 : -999);
+      return {...x, tScore: ra, score, sigScore, upsidePct, _su};
     })
     .sort((a,b) => {
-      const av = a[sortState.col]??-999, bv = b[sortState.col]??-999;
-      const d1 = sortState.asc ? av-bv : bv-av;
+      // score field: ALL tab = F+T+S, phase tabs = F+T only (set in .map() above)
+      let d1;
+      if(sortState.col === 'score') {
+        d1 = sortState.asc ? (a.score||0)-(b.score||0) : (b.score||0)-(a.score||0);
+      } else if(sortState.col === 'tScore') {
+        d1 = sortState.asc ? (a.tScore||0)-(b.tScore||0) : (b.tScore||0)-(a.tScore||0);
+      } else {
+        const av = +(a[sortState.col] ?? -999), bv = +(b[sortState.col] ?? -999);
+        d1 = sortState.asc ? av-bv : bv-av;
+        if(d1 !== 0) return d1;
+        // Tiebreak: score desc
+        const sd = (b.score||0) - (a.score||0);
+        if(sd !== 0) return sd;
+        const ud = b._su - a._su;
+        if(ud !== 0) return ud;
+        return (b.mcap||0) - (a.mcap||0);
+      }
       if(d1 !== 0) return d1;
-      // Tiebreak 1: upsidePct descending
-      const ud = (b.upsidePct??-999) - (a.upsidePct??-999);
+      // Tiebreak 1: upsidePct desc
+      const ud = b._su - a._su;
       if(ud !== 0) return ud;
-      // Tiebreak 2: mcap descending
-      return (b.mcap??0) - (a.mcap??0);
+      // Tiebreak 2: mcap desc
+      return (b.mcap||0) - (a.mcap||0);
     });
 
-  const vpbTag = s => {
+const vpbTag = s => {
     if(s.vpbDetail==='breakout')      return '<span class="tag tg">VPB✓</span>';
     if(s.vpbDetail==='weak_breakout') return '<span class="tag ty">VPB~</span>';
     if(s.vpbDetail==='coiling')       return '<span class="tag tgr">VPB</span>';
@@ -4454,9 +4974,29 @@ function openStageModal(key){
     trending:  {label:'TRENDING',    color:'#5a32b0',       sub:'Uptrend established — watch for re-entry'},
   };
   const m = meta[key] || {label:key.toUpperCase(), color:'var(--muted)', sub:''};
+  const _phaseScore = s => (s.fScore||0) + rsiScore(s.rsi) + adxScore(s.adx);
+  const _fullScore  = s => {
+    const t = rsiScore(s.rsi) + adxScore(s.adx);
+    const sig = (()=>{
+      if(s.stage==='trending') return 0;
+      if(s.emaPreCross && s.vpbScore>0) return s.vpbScore>=10?18:s.vpbScore>=7?14:12;
+      if(s.crossScore>0) return s.crossScore + (s.stage==='pullback'?3:0);
+      if(s.vpbScore>0) return s.vpbScore;
+      return 0;
+    })();
+    return (s.fScore||0) + t + sig;
+  };
+  const _sortScore = s => key==='_all' ? _fullScore(s) : _phaseScore(s);
+  const _stk_sort = (a,b) => {
+    const d = _sortScore(b) - _sortScore(a);
+    if(d!==0) return d;
+    const au=(a.upsidePct!=null?+a.upsidePct:-999), bu=(b.upsidePct!=null?+b.upsidePct:-999);
+    if(bu!==au) return bu-au;
+    return (b.mcap||0)-(a.mcap||0);
+  };
   const stocks = key==='_all'
-    ? [...allStocks].sort((a,b)=>b.score-a.score)
-    : [...allStocks].filter(s=>s.stage===key).sort((a,b)=>b.score-a.score);
+    ? [...allStocks].sort(_stk_sort)
+    : [...allStocks].filter(s=>s.stage===key).sort(_stk_sort);
 
   document.getElementById('mTitle').innerHTML =
     `<span style="color:${m.color}">${m.label}</span> <span style="font-size:12px;color:var(--muted);font-weight:400">${stocks.length} stocks</span>`;
@@ -4708,11 +5248,14 @@ function switchTab(name,el){
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('tab-'+name).classList.add('active');
-  if(name==='scanner'){ phaseMode = false; activeStage = 'all'; renderStages(); }
+  if(name==='scanner'){ phaseMode = false; activeStage = 'all'; sortState = {col:'score', asc:false}; renderStages(); }
   if(name==='plan'){ if(scoreViewType){ scoreViewType=null; document.getElementById('scoreContent').style.display='none'; document.getElementById('scoreContent').innerHTML=''; } if(stageViewKey){ stageViewKey=null; document.getElementById('stageContent').style.display='none'; document.getElementById('stageContent').innerHTML=''; } renderPlan(); }
   if(name==='ctrl') startCtrlPoll();
   else stopCtrlPoll();
   if(name==='sectorpe') renderSectorPe();
+  if(name==='evals-stock')     loadEvalsAndRender('stock');
+  if(name==='evals-analytics') loadEvalsAndRender('analytics');
+  if(name==='evals-lifecycle') loadEvalsAndRender('lifecycle');
 }
 function navToStage(stage){
   phaseMode = stage !== 'all';
@@ -4733,6 +5276,7 @@ function navToStage(stage){
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   document.getElementById('nav-scanner')?.classList.add('active');
   document.getElementById('tab-scanner').classList.add('active');
+  sortState = {col:'score', asc:false};
   renderStages();
 }
 
@@ -4810,6 +5354,8 @@ function renderStageView(){
   if(stgSector!=='all') base=base.filter(s=>s.sector===stgSector);
   if(stgLiq>0)          base=base.filter(s=>(s.dailyVol||0)>=stgLiq);
 
+  // Sort: phase-specific views use F+T only; _all view uses F+T+S
+  const phaseScore = s => (s.fScore||0) + rsiScore(s.rsi) + adxScore(s.adx);
   const fullScore = s => {
     const t = rsiScore(s.rsi) + adxScore(s.adx);
     const sig = (()=>{
@@ -4821,7 +5367,15 @@ function renderStageView(){
     })();
     return (s.fScore||0) + t + sig;
   };
-  base.sort((a,b)=>fullScore(b)-fullScore(a));
+  const sortScore = s => key === '_all' ? fullScore(s) : phaseScore(s);
+  base.sort((a,b) => {
+    const d = sortScore(b) - sortScore(a);
+    if(d !== 0) return d;
+    const au = (a.upsidePct != null ? +a.upsidePct : -999);
+    const bu = (b.upsidePct != null ? +b.upsidePct : -999);
+    if(bu !== au) return bu - au;
+    return (b.mcap||0) - (a.mcap||0);
+  });
 
   const allSectors = ['all', ...new Set(allStocks.map(s=>s.sector).filter(Boolean).sort())];
   const sectorOpts = allSectors.map(s=>`<option value="${s}"${s===stgSector?'selected':''}>${s==='all'?'All Sectors':s}</option>`).join('');
@@ -4986,7 +5540,13 @@ function renderScoreView(){
   else                    stocks=[...svs];
   if(statSector!=='all')  stocks=stocks.filter(s=>s.sector===statSector);
   if(statLiq>0)           stocks=stocks.filter(s=>(s.dailyVol||0)>=statLiq);
-  stocks.sort((a,b)=>fullScore(b)-fullScore(a));
+  stocks.sort((a,b) => {
+    const d = fullScore(b)-fullScore(a);
+    if(d!==0) return d;
+    const au=(a.upsidePct!=null?+a.upsidePct:-999), bu=(b.upsidePct!=null?+b.upsidePct:-999);
+    if(bu!==au) return bu-au;
+    return (b.mcap||0)-(a.mcap||0);
+  });
 
   const maxScore = 63;
   const stageLabelMap = {post_cross:'POST×',pre_cross:'PRE×',breakout:'BRK',coiling:'COIL',pullback:'PULL',trending:'TREND',none:'—'};
@@ -5733,7 +6293,6 @@ renderWL();
 // ═══════════════════════════════════════════════════════
 // EVALS — Strategy Validation
 // ═══════════════════════════════════════════════════════
-let evSignals = [];
 
 // ── Day-N helpers ──────────────────────────────────────
 // Returns sorted trading-day dates for a signal
@@ -5786,10 +6345,6 @@ function evStatus(sig) {
   return 'OPEN';
 }
 
-const _stageShort = {post_cross:'POST-X', pre_cross:'PRE-X', breakout:'BRK', pullback:'PULL', trending:'TREND', coiling:'COIL', none:'—'};
-const _stageColEv = {post_cross:'var(--green)',pre_cross:'var(--gold)',breakout:'var(--blue)',pullback:'#c084fc',trending:'var(--muted)',coiling:'var(--muted)',none:'var(--muted)'};
-const _statusCol  = {HIT:'var(--green)',STOP:'var(--red)',OPEN:'var(--muted)'};
-
 function _retCell(r, placeholder) {
   if (r === null) return `<td style="padding:3px 6px;text-align:center;font-family:var(--fm);font-size:9px;color:var(--muted)">${placeholder||'—'}</td>`;
   const c = r > 0 ? 'var(--green)' : r < 0 ? 'var(--red)' : 'var(--muted)';
@@ -5798,140 +6353,275 @@ function _retCell(r, placeholder) {
 }
 
 // ── Load evals data from server ────────────────────────
+// Drag-to-scroll for the matrix table
+let _evDrag = null;
+function evDragStart(e) {
+  const el = document.getElementById('evStockTable');
+  _evDrag = {x: e.pageX, left: el.scrollLeft};
+  el.style.cursor = 'grabbing';
+}
+function evDragMove(e) {
+  if (!_evDrag) return;
+  e.preventDefault();
+  const el = document.getElementById('evStockTable');
+  el.scrollLeft = _evDrag.left - (e.pageX - _evDrag.x);
+}
+function evDragEnd() {
+  _evDrag = null;
+  const el = document.getElementById('evStockTable');
+  if (el) el.style.cursor = 'grab';
+}
+
 async function loadEvals() {
   try {
     const r = await fetch('/api/evals');
     const d = await r.json();
     evSignals = (d.signals || []).reverse(); // newest first
-    computeEvSummary();
-    renderEvStock();
-    renderEvDateSelector();
   } catch(e) {
-    document.getElementById('evStockTable').innerHTML =
-      `<div style="font-family:var(--fm);font-size:11px;color:var(--red);padding:20px">Error loading evals: ${e}</div>`;
+    evSignals = [];
+    console.error('loadEvals failed:', e);
   }
+}
+
+async function loadEvalsAndRender(view) {
+  if (view === 'lifecycle') {
+    await renderEvLifecycle(); // fetches /api/lifecycle internally, independent of evSignals
+    return;
+  }
+  await loadEvals();
+  computeEvSummary();
+  if (view === 'stock')     renderEvStock();
+  if (view === 'analytics') renderEvAnalytics();
 }
 
 // ── Summary stats ──────────────────────────────────────
 function computeEvSummary() {
-  const s = evSignals;
+  // Summary bar reflects signal-tier stocks only (same scope as STOCK-WISE and ANALYTICS)
+  const s = getEvSignalSigs();
   document.getElementById('evTotal').textContent = s.length;
-  const withD20 = s.filter(x => evAge(x) >= 20);
-  if (!withD20.length) {
-    ['evHitRate','evAvgRet','evBest','evWorst'].forEach(id => document.getElementById(id).textContent = '—');
+  document.getElementById('evOpen').textContent  = s.filter(x => !x.outcome || x.outcome === 'OPEN').length;
+
+  const closed = s.filter(x => x.outcome === 'WIN' || x.outcome === 'LOSS');
+  if (!closed.length) {
+    ['evWinRate','evAvgRet','evAvgAlpha','evBest','evWorst','evAvgWinDay'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.textContent = '—';
+    });
     return;
   }
-  const rets = withD20.map(x => evRetAt(x, 20)).filter(r => r !== null);
-  const hits = rets.filter(r => r > 0).length;
-  const avg  = rets.length ? +(rets.reduce((a,b)=>a+b,0)/rets.length).toFixed(1) : null;
-  const best = rets.length ? +Math.max(...rets).toFixed(1) : null;
+
+  const wins   = closed.filter(x => x.outcome === 'WIN');
+  const winRate = Math.round(wins.length / closed.length * 100);
+  const wrEl = document.getElementById('evWinRate');
+  if (wrEl) { wrEl.textContent = winRate + '%'; wrEl.style.color = winRate >= 50 ? 'var(--green)' : 'var(--red)'; }
+
+  const rets = closed.map(x => x.outcome_ret).filter(r => r != null);
+  const avg   = rets.length ? +(rets.reduce((a,b)=>a+b,0)/rets.length).toFixed(1) : null;
+  const best  = rets.length ? +Math.max(...rets).toFixed(1) : null;
   const worst = rets.length ? +Math.min(...rets).toFixed(1) : null;
 
-  document.getElementById('evHitRate').textContent = rets.length ? `${Math.round(hits/rets.length*100)}%` : '—';
-  document.getElementById('evAvgRet').textContent   = avg  !== null ? (avg  > 0 ? '+' : '') + avg  + '%' : '—';
-  document.getElementById('evBest').textContent     = best !== null ? (best > 0 ? '+' : '') + best + '%' : '—';
-  document.getElementById('evWorst').textContent    = worst !== null ? (worst > 0 ? '+' : '') + worst + '%' : '—';
+  const avgEl = document.getElementById('evAvgRet');
+  if (avgEl) { avgEl.textContent = avg !== null ? (avg > 0 ? '+' : '') + avg + '%' : '—'; avgEl.style.color = avg > 0 ? 'var(--green)' : avg < 0 ? 'var(--red)' : 'var(--muted)'; }
+  const bEl = document.getElementById('evBest');   if (bEl) bEl.textContent = best  !== null ? (best  > 0 ? '+' : '') + best  + '%' : '—';
+  const wEl = document.getElementById('evWorst');  if (wEl) wEl.textContent = worst !== null ? (worst > 0 ? '+' : '') + worst + '%' : '—';
 
-  document.getElementById('evAvgRet').style.color = avg > 0 ? 'var(--green)' : avg < 0 ? 'var(--red)' : 'var(--muted)';
+  // Avg alpha vs NIFTY at outcome day
+  const alphas = closed.map(sig => {
+    if (!sig.nifty_prices || !sig.outcome_day) return null;
+    const nd = Object.keys(sig.nifty_prices).sort();
+    if (!nd.length) return null;
+    const n0 = sig.nifty_prices[nd[0]];
+    const nN = sig.nifty_prices[nd[Math.min(sig.outcome_day, nd.length - 1)]];
+    if (!n0 || !nN) return null;
+    return (sig.outcome_ret || 0) - (nN - n0) / n0 * 100;
+  }).filter(a => a != null);
+  const avgAlpha = alphas.length ? +(alphas.reduce((a,b)=>a+b,0)/alphas.length).toFixed(1) : null;
+  const aEl = document.getElementById('evAvgAlpha');
+  if (aEl) { aEl.textContent = avgAlpha !== null ? (avgAlpha > 0 ? '+' : '') + avgAlpha + '%' : '—'; aEl.style.color = avgAlpha > 0 ? 'var(--green)' : avgAlpha < 0 ? 'var(--red)' : 'var(--muted)'; }
+
+  // Avg win day
+  const winDays = wins.map(x => x.outcome_day).filter(d => d != null);
+  const avgWD = winDays.length ? Math.round(winDays.reduce((a,b)=>a+b,0)/winDays.length) : null;
+  const wdEl = document.getElementById('evAvgWinDay');
+  if (wdEl) wdEl.textContent = avgWD !== null ? 'D' + avgWD : '—';
 }
 
-// ── STOCK-WISE tab ─────────────────────────────────────
-function switchEvTab(tab) {
-  ['stock','date'].forEach(t => {
-    document.getElementById(`ev-${t}`).style.display = t === tab ? 'block' : 'none';
-    const btn = document.getElementById(`evtab-${t}`);
-    btn.style.color = t === tab ? 'var(--text)' : 'var(--muted)';
-    btn.style.fontWeight = t === tab ? '600' : '400';
-    btn.style.borderBottom = t === tab ? '2px solid var(--text)' : '2px solid transparent';
-  });
-  if (tab === 'date') renderEvDate();
+// ── Signal-tier selection ───────────────────────────────
+// tier is set by eval_worker.py at logging time — just filter directly.
+function getEvSignalSigs() {
+  return evSignals.filter(s => s.tier === 'signal');
+}
+
+// Returns the stage active on a given date by walking stage_history
+function evStageAtDay(sig, dateStr) {
+  const hist = (sig.stage_history || []).slice().sort((a,b) => a.date.localeCompare(b.date));
+  let stage = sig.stage;
+  for (const h of hist) {
+    if (h.date <= dateStr) stage = h.stage;
+    else break;
+  }
+  return stage;
 }
 
 function renderEvStock() {
-  const stage  = document.getElementById('evStageFilter')?.value || 'all';
-  const sortF  = document.getElementById('evSortField')?.value   || 'day0';
-  const search = (document.getElementById('evSearch')?.value     || '').toUpperCase().trim();
+  const stageF   = document.getElementById('evStageFilter')?.value  || 'all';
+  const sortF    = document.getElementById('evSortField')?.value    || 'tier_date';
+  const search   = (document.getElementById('evSearch')?.value      || '').toUpperCase().trim();
+  const outcomeF = document.getElementById('evOutcomeFilter')?.value || 'all';
+  const dateF    = document.getElementById('evDateFilter')?.value   || '';
 
-  let sigs = evSignals.filter(s => {
-    if (stage !== 'all' && s.stage !== stage) return false;
+  // STOCK-WISE shows only signal-tier stocks (top 3 per stage + top 3 all-tab score)
+  // LIFECYCLE tab uses all evSignals (no tier filter)
+  let sigs = getEvSignalSigs().filter(s => {
+    if (stageF !== 'all') {
+      const hist = s.stage_history || [];
+      const curStage = hist.length ? hist[hist.length-1].stage : s.stage;
+      if (curStage !== stageF) return false;
+    }
+    if (dateF && (s.tier_date || s.day0) !== dateF) return false;
     if (search && !s.ticker.includes(search) && !(s.name||'').toUpperCase().includes(search)) return false;
+    if (outcomeF !== 'all') {
+      const st = evStatus(s);
+      const outcomeMap = {WIN:'HIT', LOSS:'STOP', OPEN:'OPEN'};
+      if (st !== (outcomeMap[outcomeF] || outcomeF)) return false;
+    }
     return true;
   });
 
-  // Sort
   sigs = [...sigs].sort((a, b) => {
-    if (sortF === 'day0')    return b.day0.localeCompare(a.day0);
-    if (sortF === 'score')   return (b.score||0) - (a.score||0);
-    if (sortF === 'ret20')   { const r = (evRetAt(b,20)??-999) - (evRetAt(a,20)??-999); return r; }
-    if (sortF === 'current') { const r = (evCurrentRet(b)??-999) - (evCurrentRet(a)??-999); return r; }
+    if (sortF === 'tier_date')   return (b.tier_date||b.day0).localeCompare(a.tier_date||a.day0);
+    if (sortF === 'score')       return (b.score||0) - (a.score||0);
+    if (sortF === 'outcome_ret') return ((b.outcome_ret ?? -999) - (a.outcome_ret ?? -999));
+    if (sortF === 'current')     return ((evCurrentRet(b)??-999) - (evCurrentRet(a)??-999));
     return 0;
   });
 
   if (!sigs.length) {
     document.getElementById('evStockTable').innerHTML =
-      `<div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">${evSignals.length ? 'No signals match filter' : 'No signals yet — run a full compute to start logging'}</div>`;
+      `<div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">${evSignals.length ? 'No signals match filter' : 'No signals yet — run EOD scan to start logging'}</div>`;
     return;
   }
 
-  const TH = s => `<th style="padding:4px 6px;font-family:var(--fm);font-size:9px;color:var(--muted);letter-spacing:0.7px;white-space:nowrap;font-weight:500;text-align:center;border-bottom:1px solid var(--border)">${s}</th>`;
-  const TD = (v, opts={}) => {
-    const c = opts.color ? `color:${opts.color};` : '';
-    const fw = opts.bold ? 'font-weight:600;' : '';
-    const al = opts.left ? 'text-align:left;' : 'text-align:center;';
-    return `<td style="padding:3px 6px;font-family:var(--fm);font-size:10px;${c}${fw}${al}vertical-align:middle;white-space:nowrap">${v}</td>`;
-  };
+  // Display cap: show up to 100 rows by default; "Show all" button if more
+  const DISPLAY_LIMIT = 100;
+  const _evShowAll = window._evShowAll || false;
+  const totalFiltered = sigs.length;
+  if (!_evShowAll && sigs.length > DISPLAY_LIMIT) sigs = sigs.slice(0, DISPLAY_LIMIT);
 
+  // Max trading days across all visible signals (from each stock's tier_date, not day0)
+  // Always show at least D0–D20 (21 cols); expand if actual data goes further
+  const maxDays = Math.max(21, Math.max(...sigs.map(s => {
+    const td = s.tier_date || s.day0;
+    return evDays(s).filter(d => d >= td).length;
+  })));
+
+  // ── Dimensions — fill available width exactly ────────────────────────
+  const W_STOCK = 82;   // px — sticky left column (fixed)
+  const containerW = document.getElementById('evStockTable').clientWidth || (window.innerWidth - 96);
+  const W_DAY = Math.max(34, Math.floor((containerW - W_STOCK) / maxDays));
+  const FM = 'font-family:var(--fm)';
+  const FH = 'font-family:var(--fh)';
+
+  // ── Header ───────────────────────────────────────────────────────────
+  const thStock = `<th style="position:sticky;left:0;z-index:2;background:var(--s2);padding:2px 5px;${FM};font-size:7px;color:var(--muted);letter-spacing:0.6px;font-weight:600;border-bottom:1px solid var(--border);border-right:2px solid var(--border);width:${W_STOCK}px;min-width:${W_STOCK}px;max-width:${W_STOCK}px;text-align:left">STOCK</th>`;
+  const thDay = i => `<th style="padding:1px 0;${FM};font-size:7px;color:var(--muted);letter-spacing:0.3px;font-weight:500;text-align:center;border-bottom:1px solid var(--border);border-right:1px solid var(--border2);width:${W_DAY}px;min-width:${W_DAY}px;max-width:${W_DAY}px">D${i}</th>`;
+  const dayHeaders = Array.from({length: maxDays}, (_, i) => thDay(i)).join('');
+
+  // ── Rows ─────────────────────────────────────────────────────────────
   const rows = sigs.map(sig => {
-    const status = evStatus(sig);
-    const age    = evAge(sig);
-    const cur    = evCurrentRet(sig);
-    const r5     = evRetAt(sig, 5);
-    const r10    = evRetAt(sig, 10);
-    const r20    = evRetAt(sig, 20);
-    const r30    = evRetAt(sig, 30);
-    const r60    = evRetAt(sig, 60);
+    const tierDate = sig.tier_date || sig.day0;
+    const days = evDays(sig).filter(d => d >= tierDate);
+    const p0   = (days.length ? sig.prices[days[0]] : 0) || sig.price_d0;
 
-    const stageLabel = _stageShort[sig.stage] || sig.stage;
-    const stageColor = _stageColEv[sig.stage] || 'var(--muted)';
-    const statusColor = _statusCol[status] || 'var(--muted)';
+    // Outcome badge — micro pill after ticker
+    let badge = '';
+    if (sig.outcome === 'WIN') {
+      const r = sig.outcome_ret != null ? `+${sig.outcome_ret.toFixed(1)}%` : '▲';
+      badge = `<span style="${FM};font-size:6px;font-weight:700;color:#00c853;background:rgba(0,200,83,0.12);border:1px solid rgba(0,200,83,0.3);padding:0 2px;border-radius:2px;margin-left:2px;vertical-align:middle">${r}</span>`;
+    } else if (sig.outcome === 'LOSS') {
+      const r = sig.outcome_ret != null ? `${sig.outcome_ret.toFixed(1)}%` : '▼';
+      badge = `<span style="${FM};font-size:6px;font-weight:700;color:#ff1744;background:rgba(255,23,68,0.10);border:1px solid rgba(255,23,68,0.3);padding:0 2px;border-radius:2px;margin-left:2px;vertical-align:middle">${r}</span>`;
+    } else if (sig.outcome === 'EXPIRED') {
+      const r = sig.outcome_ret != null ? `${sig.outcome_ret>=0?'+':''}${sig.outcome_ret.toFixed(1)}%` : 'EXP';
+      badge = `<span style="${FM};font-size:6px;color:var(--muted2);background:var(--s3);border:1px solid var(--border);padding:0 2px;border-radius:2px;margin-left:2px;vertical-align:middle">${r}</span>`;
+    }
 
-    const vpbBadge = sig.vpbDetail && sig.vpbDetail !== 'none'
-      ? `<span style="font-size:8px;background:rgba(88,166,255,0.1);color:var(--blue);border:1px solid rgba(88,166,255,0.3);padding:1px 4px;border-radius:2px;margin-left:3px">${sig.vpbDetail.replace('_','')||''}</span>`
-      : '';
+    // Use current stage (last stage_history entry) for display; fall back to entry stage
+    const _hist = sig.stage_history || [];
+    const _curStage = _hist.length ? _hist[_hist.length-1].stage : sig.stage;
+    const entryStageColor = _stageColEv[_curStage] || 'var(--muted)';
+    const entryStageShort = _stageShort[_curStage] || (_curStage||'').toUpperCase();
 
-    return `<tr id="evrow_${sig.id}" onclick="toggleEvRow('${sig.id}')" style="cursor:pointer;border-bottom:1px solid var(--border2)">
-      ${TD(sig.day0.slice(5), {color:'var(--muted)'})}
-      <td style="padding:3px 8px;vertical-align:middle;white-space:nowrap">
-        <span style="font-family:var(--fh);font-size:13px;letter-spacing:0.5px">${sig.ticker}</span>
-        <span style="font-family:var(--fm);font-size:9px;color:var(--muted2);margin-left:4px">${sig.sector||''}</span>
-        ${vpbBadge}
-      </td>
-      ${TD(`<span style="font-size:9px;font-weight:700;color:${stageColor}">${stageLabel}</span>`)}
-      ${TD(sig.score||0, {bold:true})}
-      ${TD(`<span style="color:var(--gold)">${sig.fScore||0}</span>/<span style="color:var(--blue)">${sig.tScore||0}</span>/<span style="color:var(--muted)">${sig.sigScore||0}</span>`)}
-      ${TD(sig.rsi?.toFixed(0)??'—', {color: sig.rsi>=50&&sig.rsi<=65?'var(--green)':sig.rsi>65?'var(--red)':'var(--muted)'})}
-      ${TD(sig.adx?.toFixed(0)??'—', {color: sig.adx>=25?'var(--green)':'var(--muted)'})}
-      ${TD('₹'+(sig.price_d0||0).toLocaleString('en-IN'))}
-      ${_retCell(r5)}
-      ${_retCell(r10)}
-      ${_retCell(r20, age<20?`D${age}`:'—')}
-      ${_retCell(r30, age<30?`D${age}`:'—')}
-      ${_retCell(r60, age<60?`D${age}`:'—')}
-      ${_retCell(cur)}
-      ${TD(`<span style="font-size:9px;font-weight:700;color:${statusColor}">${status}</span>`)}
-    </tr>
-    <tr id="evexp_${sig.id}" style="display:none;background:var(--s2)">
-      <td colspan="15" style="padding:12px 16px">
-        ${renderEvExpanded(sig)}
-      </td>
-    </tr>`;
+    // Stock cell: ticker (9px) + stage·date (7px) — no company name
+    const stockCell = `<td style="position:sticky;left:0;z-index:1;background:var(--s1);padding:1px 5px;border-bottom:1px solid var(--border);border-right:2px solid var(--border);vertical-align:middle;width:${W_STOCK}px;min-width:${W_STOCK}px;max-width:${W_STOCK}px;overflow:hidden">
+      <div style="${FH};font-size:9px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3">${sig.ticker}${badge}</div>
+      <div style="${FM};font-size:6.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3"><span style="color:${entryStageColor}">${entryStageShort}</span>·${(sig.tier_date||sig.day0).slice(5)}</div>
+    </td>`;
+
+    // ── Day cells ──────────────────────────────────────────────────────
+    let prevStage = null;
+    const dayCells = Array.from({length: maxDays}, (_, i) => {
+      const dateStr = days[i];
+      if (!dateStr) {
+        // Empty future column — show just borders
+        return `<td style="border-bottom:1px solid var(--border);border-right:1px solid var(--border2);width:${W_DAY}px;min-width:${W_DAY}px;max-width:${W_DAY}px;background:rgba(0,0,0,0.015)"></td>`;
+      }
+
+      const price = sig.prices[dateStr];
+      const ret   = i === 0 ? null : (p0 ? +((price - p0) / p0 * 100).toFixed(1) : null);
+      const stage = evStageAtDay(sig, dateStr);
+      const stageChanged = stage !== prevStage;
+      prevStage = stage;
+
+      const isRetrigger = i > 0 && (sig.retrigger_dates || []).some(r => (typeof r === 'object' ? r.date : r) === dateStr);
+      const inWin  = price && p0 && price >= p0 * 1.15;
+      const inStop = price && p0 && price <= p0 * 0.91;
+
+      // Abbreviated price
+      const priceStr = price
+        ? (price >= 10000 ? '₹'+(price/1000).toFixed(1)+'k'
+          : price >= 1000  ? '₹'+(price/1000).toFixed(2)+'k'
+          : '₹'+Math.round(price))
+        : '—';
+
+      // Stage pill only when changed
+      const stagePill = stageChanged && stage
+        ? `<div style="font-size:5.5px;font-weight:700;color:${_stageColEv[stage]||'var(--muted)'};background:${_stagePillBg[stage]||'rgba(139,148,158,0.1)'};border:1px solid ${_stagePillBd[stage]||'rgba(139,148,158,0.25)'};padding:0 2px;border-radius:2px;line-height:9px;display:inline-block">${_stageShort[stage]||stage}</div>`
+        : '';
+
+      // Return %
+      let retStr;
+      if (ret === null) {
+        retStr = `<span style="font-size:7px;color:var(--muted2)">—</span>`;
+      } else if (inWin) {
+        retStr = `<span style="${FH};font-size:8px;font-weight:800;color:#00c853">${ret>0?'+':''}${ret}%</span>`;
+      } else if (inStop) {
+        retStr = `<span style="${FH};font-size:8px;font-weight:800;color:#ff1744">${ret>0?'+':''}${ret}%</span>`;
+      } else {
+        retStr = `<span style="font-size:7px;font-weight:600;color:${ret>0?'var(--green)':ret<0?'var(--red)':'var(--muted)'}">${ret>0?'+':''}${ret}%</span>`;
+      }
+
+      const cellBg = inWin ? 'background:rgba(0,200,83,0.07);' : inStop ? 'background:rgba(255,23,68,0.07);' : '';
+      const retrigBorder = isRetrigger ? 'border-left:3px solid #d4a017;' : '';
+
+      return `<td style="padding:1px 0;${cellBg}${retrigBorder}border-bottom:1px solid var(--border);border-right:1px solid var(--border2);text-align:center;vertical-align:middle;width:${W_DAY}px;min-width:${W_DAY}px;max-width:${W_DAY}px;${FM};overflow:hidden">${stagePill}<div style="font-size:7px;color:var(--text);line-height:1.25">${priceStr}</div><div style="line-height:1.25">${retStr}</div></td>`;
+    }).join('');
+
+    return `<tr>${stockCell}${dayCells}</tr>`;
   });
 
+  // ── Count info (single line, embedded in table caption) ──────────────
+  const showAllBtn = !_evShowAll && totalFiltered > DISPLAY_LIMIT
+    ? `<button onclick="window._evShowAll=true;renderEvStock()" style="${FM};font-size:8px;background:var(--s2);border:1px solid var(--border);color:var(--muted);padding:1px 6px;border-radius:2px;cursor:pointer;margin-left:6px">+${totalFiltered - DISPLAY_LIMIT} more</button>`
+    : _evShowAll && totalFiltered > DISPLAY_LIMIT
+    ? `<button onclick="window._evShowAll=false;renderEvStock()" style="${FM};font-size:8px;background:var(--s2);border:1px solid var(--border);color:var(--muted);padding:1px 6px;border-radius:2px;cursor:pointer;margin-left:6px">collapse</button>`
+    : '';
+
   document.getElementById('evStockTable').innerHTML = `
-    <table style="width:100%;border-collapse:collapse;min-width:900px">
-      <thead><tr style="background:var(--s3)">
-        ${TH('DATE')}${TH('TICKER')}${TH('STAGE')}${TH('SCR')}${TH('F/T/S')}${TH('RSI')}${TH('ADX')}${TH('ENTRY')}${TH('D5')}${TH('D10')}${TH('D20')}${TH('D30')}${TH('D60')}${TH('CUR')}${TH('STATUS')}
-      </tr></thead>
+    <table style="border-collapse:collapse;border-spacing:0;table-layout:fixed;width:100%;${FM}">
+      <caption style="caption-side:bottom;text-align:left;padding:2px 0;font-size:7px;color:var(--muted2)">
+        ${sigs.length} of ${totalFiltered} shown · ${evSignals.length} total tracked${showAllBtn}
+      </caption>
+      <thead style="position:sticky;top:0;z-index:3"><tr style="background:var(--s2)">${thStock}${dayHeaders}</tr></thead>
       <tbody>${rows.join('')}</tbody>
     </table>`;
 }
@@ -6007,121 +6697,481 @@ function renderEvExpanded(sig) {
   </div>`;
 }
 
-// ── DATE-WISE tab ──────────────────────────────────────
-function renderEvDateSelector() {
-  const dates = [...new Set(evSignals.map(s => s.day0))].sort().reverse();
-  const sel = document.getElementById('evDateSel');
-  if (!sel) return;
-  sel.innerHTML = dates.map(d => `<option value="${d}">${d}</option>`).join('') ||
-    '<option value="">No signals yet</option>';
-  renderEvDate();
+// ── ANALYTICS tab ──────────────────────────────────────
+function renderEvAnalytics() {
+  const el = document.getElementById('evAnalyticsContent');
+  if (!el) return;
+  renderEvAnalyticsData(el, computeEvAnalytics());
 }
 
-function evDateNav(dir) {
-  const sel = document.getElementById('evDateSel');
-  if (!sel) return;
-  const opts = Array.from(sel.options);
-  const cur  = sel.selectedIndex;
-  const next = cur + dir;
-  if (next >= 0 && next < opts.length) {
-    sel.selectedIndex = next;
-    renderEvDate();
+function computeEvAnalytics() {
+  const ACTIONABLE = ['coiling','breakout','pre_cross','post_cross','pullback','trending'];
+  const CPS = [7, 14, 21, 30, 45, 60];
+
+  function _med(arr) {
+    if (!arr.length) return null;
+    const s = arr.slice().sort((a,b) => a-b);
+    const m = Math.floor(s.length/2);
+    const v = s.length % 2 ? s[m] : (s[m-1]+s[m])/2;
+    return Math.round(v * 100) / 100;
+  }
+  function _mean(arr) {
+    if (!arr.length) return null;
+    return Math.round(arr.reduce((a,b) => a+b, 0) / arr.length * 100) / 100;
+  }
+  function stockRetAtDay(sig, idx) {
+    const p0 = sig.price_d0;
+    if (!p0) return null;
+    const dates = Object.keys(sig.prices || {}).sort();
+    if (dates.length <= idx) return null;
+    const p = (sig.prices || {})[dates[idx]];
+    if (!p) return null;
+    return Math.round((p - p0) / p0 * 10000) / 100;
+  }
+  function niftyRetAtDay(sig, idx) {
+    const n0 = sig.nifty_d0;
+    if (!n0) return null;
+    const dates = Object.keys(sig.prices || {}).sort();  // same day axis as stock
+    if (dates.length <= idx) return null;
+    const np = (sig.nifty_prices || {})[dates[idx]];
+    if (!np) return null;
+    return Math.round((np - n0) / n0 * 10000) / 100;
+  }
+  function cpStats(sigs) {
+    const result = {};
+    CPS.forEach(cp => {
+      const sRets = sigs.map(s => stockRetAtDay(s, cp)).filter(r => r !== null);
+      const nRets = sigs.map(s => niftyRetAtDay(s, cp)).filter(r => r !== null);
+      const alphas = sigs.map(s => {
+        const sr = stockRetAtDay(s, cp), nr = niftyRetAtDay(s, cp);
+        return (sr !== null && nr !== null) ? Math.round((sr - nr) * 100) / 100 : null;
+      }).filter(r => r !== null);
+      result[`d${cp}`] = {
+        stock_median: _med(sRets),  stock_mean: _mean(sRets),
+        nifty_median: _med(nRets),  nifty_mean: _mean(nRets),
+        alpha_median: _med(alphas),
+        n: sRets.length, n_nifty: nRets.length
+      };
+    });
+    return result;
+  }
+
+  function distStats(sigs) {
+    const result = {};
+    CPS.forEach(cp => {
+      const rets = sigs.map(s => stockRetAtDay(s, cp)).filter(r => r !== null);
+      result[`d${cp}`] = {
+        total: rets.length,
+        wins:   rets.filter(r => r >= 15).length,
+        losses: rets.filter(r => r <= -9).length,
+        best:  rets.length ? Math.round(Math.max(...rets) * 100) / 100 : null,
+        worst: rets.length ? Math.round(Math.min(...rets) * 100) / 100 : null,
+      };
+    });
+    return result;
+  }
+
+  // ANALYTICS uses signal-tier stocks only (top 3 per stage + top 3 all-tab score)
+  const signalSigs = getEvSignalSigs();
+
+  const rbs = {}, dbs = {};
+  ACTIONABLE.forEach(stage => {
+    const sigs = signalSigs.filter(s => s.stage === stage);
+    rbs[stage] = cpStats(sigs);
+    dbs[stage] = distStats(sigs);
+  });
+  rbs['_all'] = cpStats(signalSigs);
+  dbs['_all'] = distStats(signalSigs);
+
+  return { generated_at: null, total_signals: signalSigs.length, return_by_stage: rbs, distribution_by_stage: dbs };
+}
+
+function renderEvAnalyticsData(el, data) {
+  const rbs   = data.return_by_stage || {};
+  const CPS   = [7, 14, 21, 30, 45, 60];
+  const STAGE_ORDER  = ['coiling', 'breakout', 'pre_cross', 'post_cross', 'pullback', 'trending'];
+  const STAGE_LABEL  = {post_cross:'POST-CROSS', pre_cross:'PRE-CROSS', breakout:'BREAKOUT', pullback:'PULLBACK', coiling:'COILING', trending:'TRENDING'};
+  const STAGE_COLOR  = {post_cross:'var(--green)', pre_cross:'#4fc3f7', breakout:'var(--gold)', pullback:'#ce93d8', coiling:'var(--muted)', trending:'#80cbc4'};
+
+  function retColor(v) {
+    if (v == null) return 'var(--muted)';
+    return v >= 10 ? '#00e676' : v >= 5 ? 'var(--green)' : v >= 0 ? 'var(--text)' : v >= -5 ? 'var(--gold)' : 'var(--red)';
+  }
+  function alphaColor(v) {
+    if (v == null) return 'var(--muted)';
+    return v > 2 ? 'var(--green)' : v < -2 ? 'var(--red)' : 'var(--muted)';
+  }
+  function fmt(v) {
+    if (v == null) return '—';
+    return (v > 0 ? '+' : '') + v.toFixed(1) + '%';
+  }
+
+  function makeCell(d, borderStyle) {
+    const sm = d.stock_median, nm = d.nifty_median, am = d.alpha_median, n = d.n || 0;
+    return `<td style="padding:6px 10px;text-align:center;${borderStyle}">
+      <div style="display:flex;align-items:baseline">
+        <span style="font-family:var(--fh);font-size:11px;font-weight:700;color:${retColor(sm)};width:50%;text-align:right;padding-right:6px">${fmt(sm)}</span>
+        <span style="border-left:1px solid var(--border);height:14px;align-self:center;flex-shrink:0"></span>
+        <span style="font-family:var(--fh);font-size:11px;font-weight:700;color:var(--muted);width:50%;text-align:left;padding-left:6px">${fmt(nm)}</span>
+      </div>
+      <div style="border-top:1px solid var(--border);margin:3px 0"></div>
+      <div style="font-family:var(--fh);font-size:9px;font-weight:700;color:${alphaColor(am)}">α ${fmt(am)}</div>
+      <div style="font-family:var(--fm);font-size:7px;color:var(--muted2);margin-top:2px">${n ? 'n='+n : ''}</div>
+    </td>`;
+  }
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  const headerCells = CPS.map(cp =>
+    `<th style="padding:4px 10px 2px;font-family:var(--fm);font-size:9px;color:var(--muted);letter-spacing:0.8px;text-align:center;border-bottom:1px solid var(--border)">
+      <div style="margin-bottom:3px">D${cp}</div>
+      <div style="display:flex;align-items:center;font-size:7px;letter-spacing:0;font-weight:400">
+        <span style="width:50%;text-align:right;padding-right:5px">ACT.</span>
+        <span style="border-left:1px solid var(--border);height:10px;flex-shrink:0"></span>
+        <span style="width:50%;text-align:left;padding-left:5px;color:var(--muted2)">NIFTY 50</span>
+      </div>
+    </th>`
+  ).join('');
+
+  // ── Stage rows ────────────────────────────────────────────────────────────
+  const stageRows = STAGE_ORDER.map(stage => {
+    const stats = rbs[stage] || {};
+    const sc    = STAGE_COLOR[stage] || 'var(--text)';
+    const cells = CPS.map(cp => makeCell(stats[`d${cp}`] || {}, 'border-bottom:1px solid var(--border2);')).join('');
+    return `<tr>
+      <td style="padding:6px 14px;border-bottom:1px solid var(--border2);white-space:nowrap">
+        <span style="font-family:var(--fm);font-size:10px;font-weight:700;color:${sc}">${STAGE_LABEL[stage]}</span>
+      </td>${cells}
+    </tr>`;
+  }).join('');
+
+  // ── ALL row ───────────────────────────────────────────────────────────────
+  const allStats  = rbs['_all'] || {};
+  const allCells  = CPS.map(cp => makeCell(allStats[`d${cp}`] || {}, '')).join('');
+  const genAt     = data.generated_at ? `Last updated: ${data.generated_at}` : '';
+
+  el.innerHTML = `
+    <div style="padding:16px">
+      <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:14px">
+        <span style="font-family:var(--fm);font-size:10px;font-weight:700;color:var(--text);letter-spacing:0.8px;text-transform:uppercase">Return by Entry Stage — Checkpoint Days</span>
+        <span style="font-family:var(--fm);font-size:8px;color:var(--muted)">Stock median · N = NIFTY median · α = alpha (stock − NIFTY) · n = signals</span>
+        <span style="font-family:var(--fm);font-size:8px;color:var(--muted2);margin-left:auto">${genAt}</span>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="border-collapse:collapse;width:100%">
+          <thead>
+            <tr style="background:var(--s3)">
+              <th style="padding:6px 14px;font-family:var(--fm);font-size:9px;color:var(--muted);letter-spacing:0.8px;text-align:left;border-bottom:1px solid var(--border)">STAGE</th>
+              ${headerCells}
+            </tr>
+          </thead>
+          <tbody>
+            ${stageRows}
+            <tr style="background:var(--s2)">
+              <td style="padding:6px 14px;white-space:nowrap">
+                <span style="font-family:var(--fm);font-size:9px;font-weight:700;color:var(--text)">ALL</span>
+              </td>
+              ${allCells}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:10px;font-family:var(--fm);font-size:8px;color:var(--muted2)">
+        Each cell: <strong>Phase return</strong> &nbsp;<span style="color:var(--muted)">NIFTY return</span> (same size) · <strong>α alpha</strong> below · n= signal count (smallest)&nbsp;·&nbsp;
+        Return colors: <span style="color:#00e676">≥+10%</span>&nbsp;<span style="color:var(--green)">+5–10%</span>&nbsp;<span style="color:var(--text)">0–+5%</span>&nbsp;<span style="color:var(--gold)">−5–0%</span>&nbsp;<span style="color:var(--red)">≤−5%</span>&nbsp;·&nbsp;
+        Alpha: <span style="color:var(--green)">outperform &gt;+2%</span>&nbsp;<span style="color:var(--red)">underperform &lt;−2%</span>
+      </div>
+
+      <!-- ── Table 2: Distribution ── -->
+      <div style="margin-top:28px;margin-bottom:8px;display:flex;align-items:baseline;gap:12px">
+        <span style="font-family:var(--fm);font-size:10px;font-weight:700;color:var(--text);letter-spacing:0.8px;text-transform:uppercase">Stock Count &amp; Distribution by Stage</span>
+        <span style="font-family:var(--fm);font-size:8px;color:var(--muted)">Total tracked · Wins = ≥+15% at that day · Best | Worst return</span>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="border-collapse:collapse;width:100%">
+          <thead>
+            <tr style="background:var(--s3)">
+              <th style="padding:4px 14px;font-family:var(--fm);font-size:9px;color:var(--muted);letter-spacing:0.8px;text-align:left;border-bottom:1px solid var(--border)">STAGE</th>
+              ${CPS.map(cp => `<th style="padding:4px 10px 2px;font-family:var(--fm);font-size:9px;color:var(--muted);letter-spacing:0.8px;text-align:center;border-bottom:1px solid var(--border)">
+                <div style="margin-bottom:3px">D${cp}</div>
+                <div style="display:flex;justify-content:center;align-items:center;font-size:7px;letter-spacing:0;font-weight:400">
+                  <span style="width:50%;text-align:right;padding-right:5px">BEST</span>
+                  <span style="border-left:1px solid var(--border);height:10px;flex-shrink:0"></span>
+                  <span style="width:50%;text-align:left;padding-left:5px;color:var(--muted2)">WORST</span>
+                </div>
+              </th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${[...STAGE_ORDER, '_all'].map((stage, i) => {
+              const stats = (data.distribution_by_stage || {})[stage] || {};
+              const isAll = stage === '_all';
+              const sc    = isAll ? 'var(--text)' : (STAGE_COLOR[stage] || 'var(--text)');
+              const label = isAll ? 'ALL' : STAGE_LABEL[stage];
+              const rowBg = isAll ? 'background:var(--s2);' : '';
+              const cells = CPS.map(cp => {
+                const d = stats[`d${cp}`] || {};
+                const total = d.total || 0, wins = d.wins || 0, losses = d.losses || 0;
+                const best = d.best, worst = d.worst;
+                const winColor  = wins  > 0 ? 'var(--green)' : 'var(--muted)';
+                const lossColor = losses > 0 ? 'var(--red)'   : 'var(--muted)';
+                return `<td style="padding:6px 10px;text-align:center;border-bottom:1px solid var(--border2);">
+                  <div style="font-family:var(--fm);font-size:9px;color:var(--text);margin-bottom:2px">
+                    <span style="font-weight:700">${total || '—'}</span><span style="color:var(--muted);font-size:7px"> stocks</span>
+                  </div>
+                  <div style="display:flex;justify-content:center;gap:6px;margin-bottom:3px">
+                    ${total ? `<span style="font-family:var(--fm);font-size:8px;font-weight:600;color:${winColor}">${wins}W</span>` : ''}
+                    ${total ? `<span style="font-family:var(--fm);font-size:8px;font-weight:600;color:${lossColor}">${losses}L</span>` : ''}
+                  </div>
+                  <div style="display:flex;align-items:baseline;border-top:1px solid var(--border2);padding-top:3px">
+                    <span style="font-family:var(--fh);font-size:10px;font-weight:700;color:var(--green);width:50%;text-align:right;padding-right:5px">${best != null ? (best>0?'+':'')+best.toFixed(1)+'%' : '—'}</span>
+                    <span style="border-left:1px solid var(--border);height:12px;align-self:center;flex-shrink:0"></span>
+                    <span style="font-family:var(--fh);font-size:10px;font-weight:700;color:var(--red);width:50%;text-align:left;padding-left:5px">${worst != null ? (worst>0?'+':'')+worst.toFixed(1)+'%' : '—'}</span>
+                  </div>
+                </td>`;
+              }).join('');
+              return `<tr style="${rowBg}">
+                <td style="padding:6px 14px;border-bottom:1px solid var(--border2);white-space:nowrap">
+                  <span style="font-family:var(--fm);font-size:${isAll?9:10}px;font-weight:700;color:${sc}">${label}</span>
+                </td>${cells}
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:8px;font-family:var(--fm);font-size:8px;color:var(--muted2)">
+        W = stocks ≥+15% (win zone) · L = stocks ≤−9% (stop zone) · Best/Worst = single best and worst return in that phase at that checkpoint
+      </div>
+    </div>`;
+}
+
+// ── LIFECYCLE — manual compute trigger ──────────────────
+async function evRunCompute() {
+  const btn = document.getElementById('evComputeBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Running…'; }
+  try {
+    const res = await fetch('/api/evals/compute', {method:'POST'});
+    const data = await res.json();
+    if (data.ok) {
+      if (btn) { btn.textContent = '✓ Done — reloading…'; }
+      // Reload EVALS data and re-render lifecycle
+      setTimeout(async () => {
+        await loadEvals();
+        renderEvLifecycle();
+        if (btn) { btn.disabled = false; btn.textContent = '▶ GENERATE TODAY'; }
+      }, 800);
+    } else {
+      const msg = data.error || data.stderr || 'Unknown error';
+      if (btn) { btn.disabled = false; btn.textContent = '✗ Failed'; }
+      alert('eval_worker failed:\n' + msg);
+    }
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '✗ Error'; }
+    alert('Request failed: ' + e.message);
   }
 }
 
-function renderEvDate() {
-  const sel  = document.getElementById('evDateSel');
-  const date = sel?.value;
-  if (!date) return;
+// ── LIFECYCLE tab ─────────────────────────────────────────────────
+// Fetches from /api/lifecycle (lifecycle_log.json) — completely independent
+// of evSignals/signals_log.json. Scope: ALL 2535 NSE stocks.
+async function renderEvLifecycle() {
+  const el = document.getElementById('evLifecycleContent');
+  if (!el) return;
 
-  const sigs = evSignals.filter(s => s.day0 === date);
-  document.getElementById('evDateCount').textContent = `${sigs.length} signal${sigs.length!==1?'s':''} on this date`;
+  el.innerHTML = '<div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">Loading lifecycle data…</div>';
 
-  if (!sigs.length) {
-    document.getElementById('evDateGrid').innerHTML =
-      '<div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:20px">No signals on this date</div>';
+  let lcData;
+  try {
+    const r = await fetch('/api/lifecycle');
+    lcData = await r.json();
+  } catch(e) {
+    el.innerHTML = `<div style="font-family:var(--fm);font-size:11px;color:var(--red);padding:20px">Could not load lifecycle data: ${e}</div>`;
     return;
   }
 
-  // Checkpoint columns: D0, D1, D2, D3, D5, D7, D10, D15, D20, D30, D45, D60
-  const checkpoints = [0,1,2,3,5,7,10,15,20,30,45,60];
+  const stockMap    = lcData.stocks || {};
+  const lastUpdated = lcData.last_updated || '—';
 
-  const TH = s => `<th style="padding:4px 8px;font-family:var(--fm);font-size:9px;color:var(--muted);letter-spacing:0.7px;text-align:center;border-bottom:1px solid var(--border);white-space:nowrap">${s}</th>`;
+  // Phase metadata
+  const PHASE_COL   = {1:'#888',2:'var(--blue)',3:'var(--gold)',4:'var(--green)',5:'#c084fc',6:'var(--muted2)'};
+  const PHASE_SHORT = {1:'COIL',2:'BRK',3:'PRE-X',4:'POST-X',5:'PULL',6:'TREND'};
+  const PHASE_CODE  = {coiling:1,breakout:2,pre_cross:3,post_cross:4,pullback:5,trending:6};
 
-  const headerCols = checkpoints.map(n => TH(n === 0 ? 'ENTRY' : `D${n}`)).join('');
-
-  const rows = sigs.map(sig => {
-    const status = evStatus(sig);
-    const stageLabel = _stageShort[sig.stage] || sig.stage;
-    const stageColor = _stageColEv[sig.stage] || 'var(--muted)';
-    const age = evAge(sig);
-
-    const entryCells = checkpoints.map(n => {
-      if (n === 0) {
-        return `<td style="padding:4px 8px;font-family:var(--fm);font-size:10px;text-align:center;white-space:nowrap">₹${(sig.price_d0||0).toLocaleString('en-IN')}</td>`;
-      }
-      const r = evRetAt(sig, n);
-      if (r === null) {
-        // Show latest available if within range
-        const latest = evCurrentRet(sig);
-        const txt = age > 0 && n <= age ? (latest !== null ? (() => {
-          const c2 = latest>0?'var(--green)':latest<0?'var(--red)':'var(--muted)';
-          return `<td style="padding:4px 8px;text-align:center;font-family:var(--fm);font-size:9px;color:${c2};opacity:0.5">${latest>0?'+':''}${latest}%</td>`;
-        })() : '<td></td>') : '<td style="text-align:center;font-family:var(--fm);font-size:9px;color:var(--border)">—</td>';
-        return typeof txt === 'string' ? txt : '<td></td>';
-      }
-      const c = r > 0 ? 'var(--green)' : r < 0 ? 'var(--red)' : 'var(--muted)';
-      const bg = r > 3 ? 'background:rgba(10,102,64,0.1)' : r < -3 ? 'background:rgba(192,21,42,0.08)' : '';
-      return `<td style="padding:4px 8px;text-align:center;font-family:var(--fm);font-size:10px;font-weight:600;color:${c};${bg};white-space:nowrap">${r>0?'+':''}${r}%</td>`;
+  function pathBadges(path) {
+    if (!path || !path.length) return '<span style="color:var(--muted);font-size:9px">∅ none</span>';
+    return path.map((n, i) => {
+      const col = PHASE_COL[n] || 'var(--muted)';
+      const arrow = i > 0 ? `<span style="color:var(--border);margin:0 2px;font-size:9px">→</span>` : '';
+      return `${arrow}<span style="display:inline-block;padding:1px 5px;border-radius:3px;background:${col}18;border:1px solid ${col}55;font-size:8px;font-weight:700;color:${col}">${n}</span>`;
     }).join('');
+  }
 
-    return `<tr style="border-bottom:1px solid var(--border2)" onclick="openDetail('${sig.ticker}')" title="Open ${sig.ticker} detail">
-      <td style="padding:4px 10px;white-space:nowrap;cursor:pointer">
-        <span style="font-family:var(--fh);font-size:13px">${sig.ticker}</span>
-        <span style="font-family:var(--fm);font-size:8px;font-weight:700;color:${stageColor};margin-left:6px">${stageLabel}</span>
-      </td>
-      <td style="padding:4px 8px;text-align:center;font-family:var(--fm);font-size:10px;font-weight:600">${sig.score||'—'}</td>
-      ${entryCells}
-      <td style="padding:4px 8px;text-align:center;font-family:var(--fm);font-size:9px;font-weight:700;color:${_statusCol[status]||'var(--muted)'}">${status}</td>
-    </tr>`;
+  function phaseBadge(phase) {
+    const n = PHASE_CODE[phase] || 0;
+    if (!n) return '<span style="color:var(--muted);font-size:9px">—</span>';
+    const col = PHASE_COL[n];
+    return `<span style="display:inline-block;padding:1px 6px;border-radius:3px;background:${col}18;border:1px solid ${col}55;font-size:8px;font-weight:700;color:${col}">${PHASE_SHORT[n]}</span>`;
+  }
+
+  function emptyMsg(msg) {
+    return `<div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:24px;text-align:center;border:1px dashed var(--border);border-radius:4px">${msg}</div>`;
+  }
+
+  // Collect all resolved cycles across all stocks, attaching ticker
+  const resolved = [];
+  const expired  = [];
+  Object.values(stockMap).forEach(rec => {
+    (rec.resolved_cycles || []).forEach(cy => {
+      const entry = {...cy, ticker: rec.ticker};
+      if (cy.outcome === 'WIN' || cy.outcome === 'LOSS') resolved.push(entry);
+      else if (cy.outcome === 'EXPIRED') expired.push(entry);
+    });
   });
+  resolved.sort((a,b) => (b.outcome_date||'').localeCompare(a.outcome_date||''));
+  expired.sort((a,b)  => (b.outcome_date||'').localeCompare(a.outcome_date||''));
 
-  // Correlation insights row at bottom
-  const withD20 = sigs.filter(s => evAge(s) >= 20);
-  const rets20  = withD20.map(s => evRetAt(s, 20)).filter(r => r !== null);
-  const insightRow = rets20.length >= 2 ? `
-    <tr style="background:var(--s3);border-top:2px solid var(--border)">
-      <td colspan="2" style="padding:4px 10px;font-family:var(--fm);font-size:9px;color:var(--muted);letter-spacing:0.5px">BATCH AVG (D20)</td>
-      ${checkpoints.map(n => {
-        if (n === 0) return '<td></td>';
-        if (n !== 20) return '<td></td>';
-        const avg = +(rets20.reduce((a,b)=>a+b,0)/rets20.length).toFixed(1);
-        const c = avg>0?'var(--green)':avg<0?'var(--red)':'var(--muted)';
-        return `<td style="padding:4px 8px;text-align:center;font-family:var(--fm);font-size:10px;font-weight:700;color:${c}">${avg>0?'+':''}${avg}%</td>`;
-      }).join('')}
-      <td></td>
-    </tr>` : '';
-
-  document.getElementById('evDateGrid').innerHTML = `
-    <table style="width:100%;border-collapse:collapse;min-width:800px">
-      <thead><tr style="background:var(--s3)">
-        ${TH('TICKER')}${TH('SCORE')}${headerCols}${TH('STATUS')}
+  // ── Panel 1 — Resolved (WIN / LOSS) ──────────────────────────────
+  let p1html = '';
+  if (!resolved.length) {
+    p1html = emptyMsg('No resolved journeys yet — populates when a stock hits +15% or −9%');
+  } else {
+    const rows = resolved.map(cy => {
+      const isWin = cy.outcome === 'WIN';
+      const rowBg = isWin ? 'background:rgba(52,199,89,0.04)' : 'background:rgba(255,59,48,0.04)';
+      const col   = isWin ? 'var(--green)' : 'var(--red)';
+      const ret   = cy.outcome_ret != null ? (cy.outcome_ret > 0 ? '+' : '') + cy.outcome_ret + '%' : '—';
+      return `<tr style="border-bottom:1px solid var(--border2);${rowBg}">
+        <td style="padding:6px 10px;font-family:var(--fm);font-size:11px;font-weight:700">${cy.ticker}</td>
+        <td style="padding:6px 8px;font-family:var(--fm);font-size:9px;color:var(--muted2)">${cy.d0}</td>
+        <td style="padding:6px 8px">${phaseBadge(cy.d0_phase)}</td>
+        <td style="padding:6px 8px">${pathBadges(cy.path)}</td>
+        <td style="padding:6px 8px;font-family:var(--fm);font-size:11px;font-weight:700;color:${col}">${cy.outcome}</td>
+        <td style="padding:6px 8px;font-family:var(--fm);font-size:9px;color:var(--muted2)">${cy.outcome_date || '—'}</td>
+        <td style="padding:6px 8px;font-family:var(--fm);font-size:9px;color:var(--muted2)">${cy.outcome_day != null ? 'D'+cy.outcome_day : '—'}</td>
+        <td style="padding:6px 8px;font-family:var(--fm);font-size:11px;font-weight:700;color:${col}">${ret}</td>
+      </tr>`;
+    }).join('');
+    p1html = `<div style="overflow:auto;max-height:320px"><table style="width:100%;border-collapse:collapse">
+      <thead><tr style="border-bottom:1px solid var(--border)">
+        <th style="padding:5px 10px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--muted);text-align:left">TICKER</th>
+        <th style="padding:5px 8px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--muted);text-align:left">D0 DATE</th>
+        <th style="padding:5px 8px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--muted);text-align:left">D0 PHASE</th>
+        <th style="padding:5px 8px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--muted);text-align:left">PATH TAKEN</th>
+        <th style="padding:5px 8px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--muted);text-align:left">RESULT</th>
+        <th style="padding:5px 8px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--muted);text-align:left">DATE</th>
+        <th style="padding:5px 8px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--muted);text-align:left">DAY N</th>
+        <th style="padding:5px 8px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--muted);text-align:left">RET%</th>
       </tr></thead>
-      <tbody>${rows.join('')}${insightRow}</tbody>
-    </table>`;
+      <tbody>${rows}</tbody>
+    </table></div>`;
+  }
+
+  // ── Panel 2 — Expired ─────────────────────────────────────────────
+  let p2html = '';
+  if (!expired.length) {
+    p2html = emptyMsg('No expired journeys yet — populates when 60 days pass with no +15% or −9%');
+  } else {
+    const rows = expired.map(cy => {
+      const ret = cy.outcome_ret != null ? (cy.outcome_ret > 0 ? '+' : '') + cy.outcome_ret + '%' : '—';
+      const col = cy.outcome_ret > 0 ? 'var(--green)' : cy.outcome_ret < 0 ? 'var(--red)' : 'var(--muted)';
+      return `<tr style="border-bottom:1px solid var(--border2)">
+        <td style="padding:6px 10px;font-family:var(--fm);font-size:11px;font-weight:700">${cy.ticker}</td>
+        <td style="padding:6px 8px;font-family:var(--fm);font-size:9px;color:var(--muted2)">${cy.d0}</td>
+        <td style="padding:6px 8px">${phaseBadge(cy.d0_phase)}</td>
+        <td style="padding:6px 8px">${pathBadges(cy.path)}</td>
+        <td style="padding:6px 8px;font-family:var(--fm);font-size:9px;color:var(--muted2)">${cy.outcome_date || '—'}</td>
+        <td style="padding:6px 8px;font-family:var(--fm);font-size:11px;font-weight:700;color:${col}">${ret}</td>
+      </tr>`;
+    }).join('');
+    p2html = `<div style="overflow:auto;max-height:320px"><table style="width:100%;border-collapse:collapse">
+      <thead><tr style="border-bottom:1px solid var(--border)">
+        <th style="padding:5px 10px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--muted);text-align:left">TICKER</th>
+        <th style="padding:5px 8px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--muted);text-align:left">D0 DATE</th>
+        <th style="padding:5px 8px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--muted);text-align:left">D0 PHASE</th>
+        <th style="padding:5px 8px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--muted);text-align:left">PATH TAKEN</th>
+        <th style="padding:5px 8px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--muted);text-align:left">EXPIRED DATE</th>
+        <th style="padding:5px 8px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--muted);text-align:left">FINAL RET%</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+  }
+
+  // ── Panel 3 — Path Index ──────────────────────────────────────────
+  const allCycles = [...resolved, ...expired];
+  let p3html = '';
+  if (!allCycles.length) {
+    p3html = emptyMsg('Path index populates once any stock resolves or expires');
+  } else {
+    const groups = {};
+    allCycles.forEach(cy => {
+      const key = (cy.path || []).join('-') || '_none';
+      if (!groups[key]) groups[key] = {path: cy.path||[], path_str: cy.path_str||'∅', cycles:[]};
+      groups[key].cycles.push(cy);
+    });
+    const avgDay = arr => { const d=arr.filter(c=>c.outcome_day!=null).map(c=>c.outcome_day); return d.length?Math.round(d.reduce((a,b)=>a+b,0)/d.length):null; };
+    const avgRet = arr => { const r=arr.filter(c=>c.outcome_ret!=null).map(c=>c.outcome_ret); return r.length?(r.reduce((a,b)=>a+b,0)/r.length).toFixed(1):null; };
+    const rows = Object.values(groups).sort((a,b)=>b.cycles.length-a.cycles.length).map(g => {
+      const wins=g.cycles.filter(c=>c.outcome==='WIN'), losses=g.cycles.filter(c=>c.outcome==='LOSS'), exps=g.cycles.filter(c=>c.outcome==='EXPIRED');
+      const closed=wins.length+losses.length, wr=closed?Math.round(wins.length/closed*100):null;
+      const wrCol=wr==null?'var(--muted)':wr>=60?'var(--green)':wr>=40?'var(--gold)':'var(--red)';
+      const wd=avgDay(wins), wr2=avgRet(wins), la=avgRet(losses);
+      return `<tr style="border-bottom:1px solid var(--border2)">
+        <td style="padding:6px 10px;white-space:nowrap">${pathBadges(g.path)}</td>
+        <td style="padding:6px 8px;font-family:var(--fm);font-size:9px;color:var(--muted2);text-align:center">${g.path_str}</td>
+        <td style="padding:6px 8px;font-family:var(--fh);font-size:13px;font-weight:700;text-align:center">${g.cycles.length}</td>
+        <td style="padding:6px 8px;font-family:var(--fm);font-size:10px;font-weight:700;color:${wrCol};text-align:center">${wr!=null?wr+'%':'—'}</td>
+        <td style="padding:6px 8px;font-family:var(--fm);font-size:9px;color:var(--green);text-align:center">${wins.length||'—'}</td>
+        <td style="padding:6px 8px;font-family:var(--fm);font-size:9px;color:var(--red);text-align:center">${losses.length||'—'}</td>
+        <td style="padding:6px 8px;font-family:var(--fm);font-size:9px;color:var(--muted);text-align:center">${exps.length||'—'}</td>
+        <td style="padding:6px 8px;font-family:var(--fm);font-size:9px;color:var(--green);text-align:center">${wd!=null?'D'+wd:'—'}</td>
+        <td style="padding:6px 8px;font-family:var(--fm);font-size:9px;color:var(--green);text-align:center">${wr2!=null?'+'+wr2+'%':'—'}</td>
+        <td style="padding:6px 8px;font-family:var(--fm);font-size:9px;color:var(--red);text-align:center">${la!=null?la+'%':'—'}</td>
+      </tr>`;
+    }).join('');
+    p3html = `<div style="overflow:auto;max-height:300px"><table style="width:100%;border-collapse:collapse">
+      <thead><tr style="border-bottom:1px solid var(--border)">
+        <th style="padding:5px 10px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--muted);text-align:left">PATH BADGES</th>
+        <th style="padding:5px 8px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--muted);text-align:center">PATH</th>
+        <th style="padding:5px 8px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--muted);text-align:center">COUNT</th>
+        <th style="padding:5px 8px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--muted);text-align:center">WIN RATE</th>
+        <th style="padding:5px 8px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--green);text-align:center">WINS</th>
+        <th style="padding:5px 8px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--red);text-align:center">LOSSES</th>
+        <th style="padding:5px 8px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--muted);text-align:center">EXPIRED</th>
+        <th style="padding:5px 8px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--green);text-align:center">AVG WIN DAY</th>
+        <th style="padding:5px 8px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--green);text-align:center">AVG WIN RET</th>
+        <th style="padding:5px 8px;font-family:var(--fm);font-size:8px;font-weight:700;color:var(--red);text-align:center">AVG LOSS RET</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+  }
+
+  // ── Assemble ──────────────────────────────────────────────────────
+  const ps = 'background:var(--s1);border:1px solid var(--border);border-radius:4px;padding:14px 16px;margin-bottom:12px';
+  const ph = (label, count, col) =>
+    `<div style="font-family:var(--fm);font-size:10px;font-weight:700;letter-spacing:1px;color:${col||'var(--muted)'};margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">${label}${count!=null?`<span style="font-size:9px;color:var(--muted2);font-weight:400">${count} entries</span>`:''}</div>`;
+
+  el.innerHTML = `
+    <div style="${ps}">${ph('PANEL 1 — RESOLVED JOURNEYS (WIN / LOSS)',resolved.length,'var(--text)')}${p1html}</div>
+    <div style="${ps}">${ph('PANEL 2 — EXPIRED JOURNEYS (60-DAY, NO TARGET)',expired.length,'var(--muted)')}${p2html}</div>
+    <div style="${ps}">
+      ${ph('PANEL 3 — STAGE PATH INDEX',null,'var(--muted)')}
+      <div style="font-family:var(--fm);font-size:9px;color:var(--muted2);margin-bottom:8px">Which phase sequences lead to wins? · 1 COILING · 2 BREAKOUT · 3 PRE-CROSS · 4 POST-CROSS · 5 PULLBACK · 6 TRENDING</div>
+      ${p3html}
+    </div>
+    <div style="font-family:var(--fm);font-size:8px;color:var(--muted2);margin-top:4px;display:flex;justify-content:space-between;align-items:center">
+      <span>lifecycle_log.json · ${Object.keys(stockMap).length} stocks tracked · WIN +15% · LOSS −9% · cycle 60 days</span>
+      <span>last updated ${lastUpdated}</span>
+    </div>
+    <div style="margin-top:6px;text-align:right">
+      <button onclick="renderEvLifecycle()" style="font-family:var(--fm);font-size:10px;background:var(--s2);border:1px solid var(--border);color:var(--muted);padding:4px 12px;border-radius:4px;cursor:pointer">蘵 Refresh</button>
+    </div>`;
 }
+
+
 
 // INIT
 renderWL();
 
-// ── Lazy-load evals when tab first opens ──────────────
-(function() {
-  const orig = window.switchTab;
-  window.switchTab = function(name, el) {
-    orig && orig(name, el);
-    if (name === 'evals' && !evSignals.length) loadEvals();
-  };
-})();
+
 </script>
 </body>
 </html>
