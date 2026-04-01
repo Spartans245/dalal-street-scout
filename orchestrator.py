@@ -292,6 +292,22 @@ def run_pipeline(test=False, from_step=None, eod=False):
     st = read_status('compute')
     print_status('compute', st)
 
+    # ── Steps 5/6/7: EVALS workers (EOD only) — run immediately after compute ──
+    # eval_worker reads stocks.json for prices+stages from kite — does NOT need YF.
+    # Running before yf_proc.wait() ensures EVALS updates at ~4 PM, not 6 PM+.
+    if eod and not test:
+        eval_code = run_worker('eval_worker.py', ['--eod'], label='EVALS')
+        if eval_code != 0:
+            print(f'[ORCH] WARN: eval_worker failed (exit {eval_code}) — signals_log not updated')
+
+        anl_code = run_worker('analytics_worker.py', [], label='ANALYTICS')
+        if anl_code != 0:
+            print(f'[ORCH] WARN: analytics_worker failed (exit {anl_code}) — non-fatal')
+
+        lc_code = run_worker('lifecycle_worker.py', [], label='LIFECYCLE')
+        if lc_code != 0:
+            print(f'[ORCH] WARN: lifecycle_worker failed (exit {lc_code}) — non-fatal')
+
     # ── Wait for YF, then patch D/E+ROE into stocks.json ─────────
     if yf_proc is not None:
         if yf_proc.poll() is None:
@@ -303,25 +319,6 @@ def run_pipeline(test=False, from_step=None, eod=False):
         else:
             print_status('yf', read_status('yf'))
             patch_yf_into_computed()   # triggers server file-watcher reload → UI refreshes
-
-    # ── Step 5: EVALS worker (EOD only) — runs after stocks.json is final ──
-    if eod and not test:
-        eval_code = run_worker('eval_worker.py', ['--eod'], label='EVALS')
-        if eval_code != 0:
-            print(f'[ORCH] WARN: eval_worker failed (exit {eval_code}) — signals_log not updated')
-        # Non-fatal: EVALS failure never blocks the scanner
-
-    # ── Step 6: Analytics worker (EOD only) — runs after eval_worker ─────────
-    if eod and not test:
-        anl_code = run_worker('analytics_worker.py', [], label='ANALYTICS')
-        if anl_code != 0:
-            print(f'[ORCH] WARN: analytics_worker failed (exit {anl_code}) — non-fatal')
-
-    # ── Step 7: Lifecycle worker (EOD only) — independent of eval_worker ──────
-    if eod and not test:
-        lc_code = run_worker('lifecycle_worker.py', [], label='LIFECYCLE')
-        if lc_code != 0:
-            print(f'[ORCH] WARN: lifecycle_worker failed (exit {lc_code}) — non-fatal')
 
     # ── Summary ───────────────────────────────────────────────────
     elapsed = round(time.time() - t0, 1)

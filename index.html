@@ -337,7 +337,8 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
     <div style="padding:8px 16px 4px;font-size:9px;letter-spacing:1.2px;color:var(--muted2);text-transform:uppercase;font-family:var(--fm)">Evals</div>
     <div class="nav-item" id="nav-evals-stock"     onclick="switchTab('evals-stock',this)">&#9654; Stock-Wise</div>
     <div class="nav-item" id="nav-evals-analytics" onclick="switchTab('evals-analytics',this)">&#9654; Analytics</div>
-    <div class="nav-item" id="nav-evals-lifecycle" onclick="switchTab('evals-lifecycle',this)">&#9654; Lifecycle</div>
+    <div class="nav-item" id="nav-evals-lifecycle"   onclick="switchTab('evals-lifecycle',this)">&#9654; Lifecycle</div>
+    <div class="nav-item" id="nav-evals-regression" onclick="switchTab('evals-regression',this)">&#9654; Regression</div>
   </div>
   <div class="nav-section">
     <div style="padding:8px 16px 4px;font-size:9px;letter-spacing:1.2px;color:var(--muted2);text-transform:uppercase;font-family:var(--fm)">Educational</div>
@@ -2953,6 +2954,17 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
     <div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">Loading lifecycle data…</div>
   </div>
 </div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- EVALS — REGRESSION                                              -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="panel" id="tab-evals-regression">
+  <div class="stitle">REGRESSION <span style="font-family:var(--fm);font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0">— which parameters predict WIN outcomes</span></div>
+  <div id="evRegressionContent">
+    <div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">Loading regression model…</div>
+  </div>
+</div>
+
 <div class="panel" id="tab-evalslogic">
   <div class="stitle">EVALS LOGIC <span style="font-family:var(--fm);font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0">— how each EVALS tab works, what it measures, and why it matters</span></div>
 
@@ -3885,7 +3897,8 @@ async function kiteOpenBrowser(){
   try {
     const r = await fetch('/api/kite/open_browser');
     const d = await r.json();
-    if(btn){ btn.textContent = d.ok ? 'Browser Opened ✓' : 'Error — check terminal'; btn.disabled=false; }
+    if(d.url){ window.open(d.url, '_blank'); }
+    if(btn){ btn.textContent = d.url ? 'Browser Opened ✓' : 'Error — check terminal'; btn.disabled=false; }
   } catch(e){
     if(btn){ btn.textContent='Failed — check server'; btn.disabled=false; }
   }
@@ -5253,9 +5266,10 @@ function switchTab(name,el){
   if(name==='ctrl') startCtrlPoll();
   else stopCtrlPoll();
   if(name==='sectorpe') renderSectorPe();
-  if(name==='evals-stock')     loadEvalsAndRender('stock');
-  if(name==='evals-analytics') loadEvalsAndRender('analytics');
-  if(name==='evals-lifecycle') loadEvalsAndRender('lifecycle');
+  if(name==='evals-stock')       loadEvalsAndRender('stock');
+  if(name==='evals-analytics')   loadEvalsAndRender('analytics');
+  if(name==='evals-lifecycle')   loadEvalsAndRender('lifecycle');
+  if(name==='evals-regression')  loadRegressionAndRender();
 }
 function navToStage(stage){
   phaseMode = stage !== 'all';
@@ -6702,6 +6716,269 @@ function renderEvAnalytics() {
   const el = document.getElementById('evAnalyticsContent');
   if (!el) return;
   renderEvAnalyticsData(el, computeEvAnalytics());
+}
+
+// ── REGRESSION tab ──────────────────────────────────────────────────────────
+async function loadRegressionAndRender() {
+  const el = document.getElementById('evRegressionContent');
+  if (!el) return;
+  el.innerHTML = '<div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">Loading…</div>';
+  try {
+    const r = await fetch('/api/regression');
+    const data = await r.json();
+    renderRegression(el, data);
+  } catch(e) {
+    el.innerHTML = `<div style="font-family:var(--fm);font-size:11px;color:var(--red);padding:40px;text-align:center">Error: ${e.message}</div>`;
+  }
+}
+
+function renderRegression(el, data) {
+  const nRes   = data.n_resolved || 0;
+  const minN   = data.min_needed || 5;
+  const bwr    = data.baseline_win_rate;
+  const feats  = data.features   || [];
+  const combos = data.combinations || [];
+  const hmap   = data.rsi_adx_heatmap || [];
+  const bands  = data.score_bands || [];
+
+  // ── helpers ──
+  const pct  = v => v == null ? '—' : (v*100).toFixed(1)+'%';
+  const lift_color = v => v == null ? 'var(--muted)' : v >= 1.3 ? '#00c853' : v >= 1.1 ? 'var(--green)' : v <= 0.7 ? 'var(--red)' : v <= 0.9 ? 'var(--gold)' : 'var(--muted)';
+  const iv_label = iv => iv >= 0.3 ? 'Strong' : iv >= 0.1 ? 'Medium' : iv >= 0.02 ? 'Weak' : 'Noise';
+  const iv_color = iv => iv >= 0.3 ? '#00c853' : iv >= 0.1 ? 'var(--green)' : iv >= 0.02 ? 'var(--gold)' : 'var(--muted2)';
+  const type_color = t => t==='bool'?'#4fc3f7' : t==='combo'?'#ce93d8' : t==='cat'?'var(--gold)' : 'var(--muted)';
+  const type_label = t => t==='bool'?'BOOL' : t==='combo'?'COMBO' : t==='cat'?'CAT' : 'ORD';
+
+  // ── waiting state ──
+  if (nRes < minN) {
+    el.innerHTML = `
+      <div style="padding:40px;text-align:center">
+        <div style="font-family:var(--fh);font-size:14px;color:var(--muted);margin-bottom:8px">Collecting data</div>
+        <div style="font-family:var(--fm);font-size:11px;color:var(--muted2);margin-bottom:16px">
+          ${nRes} of ${minN} resolved signals needed for first model run.
+          Signals resolve at WIN (+15%) or LOSS (−9%) — check back as trades close out.
+        </div>
+        <div style="display:inline-block;background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:12px 24px">
+          <div style="font-family:var(--fm);font-size:9px;color:var(--muted2);letter-spacing:1px;margin-bottom:4px">PROGRESS</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="width:200px;height:6px;background:var(--border);border-radius:3px">
+              <div style="width:${Math.round(nRes/minN*100)}%;height:100%;background:var(--green);border-radius:3px"></div>
+            </div>
+            <span style="font-family:var(--fh);font-size:11px;font-weight:700;color:var(--text)">${nRes}/${minN}</span>
+          </div>
+        </div>
+        <div style="margin-top:20px;font-family:var(--fm);font-size:10px;color:var(--muted2)">
+          Run <code>python regression_worker.py</code> after signals resolve to update.
+        </div>
+      </div>`;
+    return;
+  }
+
+  // ── section header helper ──
+  const sectionHdr = (title, sub) => `
+    <div style="display:flex;align-items:baseline;gap:10px;margin:28px 0 12px">
+      <span style="font-family:var(--fm);font-size:10px;font-weight:700;color:var(--text);letter-spacing:0.8px;text-transform:uppercase">${title}</span>
+      <span style="font-family:var(--fm);font-size:8px;color:var(--muted)">${sub}</span>
+    </div>`;
+
+  // ── 1. Feature ranking (IV chart) ──
+  const MAX_IV = Math.max(...feats.map(f => f.iv), 0.01);
+  const featRows = feats.map(f => {
+    const barW = Math.round(f.iv / MAX_IV * 100);
+    return `<tr>
+      <td style="padding:3px 10px;font-family:var(--fh);font-size:9px;font-weight:700;color:var(--text);white-space:nowrap">${f.name}</td>
+      <td style="padding:3px 6px">
+        <span style="font-family:var(--fm);font-size:7px;font-weight:700;color:${type_color(f.type)};background:${type_color(f.type)}22;border:1px solid ${type_color(f.type)}44;padding:0 4px;border-radius:2px">${type_label(f.type)}</span>
+      </td>
+      <td style="padding:3px 10px;width:200px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="flex:1;height:6px;background:var(--border);border-radius:3px">
+            <div style="width:${barW}%;height:100%;background:${iv_color(f.iv)};border-radius:3px"></div>
+          </div>
+          <span style="font-family:var(--fh);font-size:9px;font-weight:700;color:${iv_color(f.iv)};width:36px;text-align:right">${f.iv.toFixed(3)}</span>
+        </div>
+      </td>
+      <td style="padding:3px 8px;font-family:var(--fm);font-size:8px;color:${iv_color(f.iv)}">${iv_label(f.iv)}</td>
+    </tr>`;
+  }).join('');
+
+  // ── 2. Top feature drilldowns (top 6) ──
+  const drilldowns = feats.slice(0,6).map(f => {
+    const buckets = f.buckets || [];
+    const maxWR = Math.max(...buckets.map(b => b.win_rate), 0.01);
+    const rows = buckets.map(b => {
+      const barW = Math.round(b.win_rate / maxWR * 100);
+      const lc   = lift_color(b.lift);
+      return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        <div style="font-family:var(--fm);font-size:8px;color:var(--muted);width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${b.label}">${b.label}</div>
+        <div style="flex:1;height:5px;background:var(--border);border-radius:2px">
+          <div style="width:${barW}%;height:100%;background:${lc};border-radius:2px"></div>
+        </div>
+        <span style="font-family:var(--fh);font-size:8px;font-weight:700;color:${lc};width:36px;text-align:right">${pct(b.win_rate)}</span>
+        <span style="font-family:var(--fm);font-size:7px;color:var(--muted2);width:28px;text-align:right">n=${b.n}</span>
+        <span style="font-family:var(--fh);font-size:7px;font-weight:700;color:${lc};width:32px;text-align:right">${b.lift != null ? b.lift.toFixed(2)+'×' : '—'}</span>
+      </div>`;
+    }).join('');
+    return `<div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:10px 12px">
+      <div style="font-family:var(--fm);font-size:8px;font-weight:700;color:var(--text);letter-spacing:0.6px;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+        ${f.name}
+        <span style="font-family:var(--fm);font-size:7px;color:${iv_color(f.iv)}">IV ${f.iv.toFixed(3)}</span>
+      </div>
+      ${rows}
+    </div>`;
+  }).join('');
+
+  // ── 3. Score bands ──
+  const bandRows = bands.map(b => {
+    const lc = lift_color(b.lift);
+    const barW = b.win_rate != null ? Math.round(b.win_rate * 100) : 0;
+    return `<tr>
+      <td style="padding:5px 10px;font-family:var(--fm);font-size:9px;color:var(--text)">${b.label}</td>
+      <td style="padding:5px 10px;text-align:center;font-family:var(--fm);font-size:9px;color:var(--muted)">${b.n}</td>
+      <td style="padding:5px 10px;width:140px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="flex:1;height:6px;background:var(--border);border-radius:3px">
+            <div style="width:${barW}%;height:100%;background:${lc};border-radius:3px"></div>
+          </div>
+          <span style="font-family:var(--fh);font-size:9px;font-weight:700;color:${lc}">${pct(b.win_rate)}</span>
+        </div>
+      </td>
+      <td style="padding:5px 10px;text-align:center;font-family:var(--fh);font-size:9px;font-weight:700;color:${lc}">${b.lift != null ? b.lift.toFixed(2)+'×' : '—'}</td>
+      <td style="padding:5px 10px;text-align:center;font-family:var(--fh);font-size:9px;color:var(--muted)">${b.avg_ret != null ? (b.avg_ret>0?'+':'')+b.avg_ret.toFixed(1)+'%' : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  // ── 4. RSI × ADX heatmap ──
+  const RSI_BANDS = ['<45','45–50','50–55','55–58','58–65','>65'];
+  const heatmapRows = hmap.map(row => {
+    const cells = (row.cells || []).map(c => {
+      const wr = c.win_rate;
+      const bg = wr == null ? 'var(--s1)' : wr >= 0.7 ? 'rgba(0,200,83,0.25)' : wr >= 0.55 ? 'rgba(0,200,83,0.12)' : wr >= 0.4 ? 'var(--s2)' : wr >= 0.25 ? 'rgba(255,23,68,0.08)' : 'rgba(255,23,68,0.18)';
+      const tc = wr == null ? 'var(--muted2)' : lift_color(c.lift);
+      return `<td style="padding:4px 6px;text-align:center;background:${bg};border:1px solid var(--border2)">
+        ${c.n >= 3 ? `<div style="font-family:var(--fh);font-size:9px;font-weight:700;color:${tc}">${pct(wr)}</div>
+        <div style="font-family:var(--fm);font-size:6.5px;color:var(--muted2)">n=${c.n}</div>` :
+        `<div style="font-family:var(--fm);font-size:7px;color:var(--border)">—</div>`}
+      </td>`;
+    }).join('');
+    return `<tr>
+      <td style="padding:4px 8px;font-family:var(--fm);font-size:8px;color:var(--muted);white-space:nowrap;font-weight:700">${row.adx_band}</td>
+      ${cells}
+    </tr>`;
+  }).join('');
+
+  // ── 5. Boolean combinations ──
+  const comboRows = combos.slice(0,20).map(c => {
+    const lc = lift_color(c.lift);
+    return `<tr>
+      <td style="padding:4px 10px;font-family:var(--fm);font-size:8px;color:var(--text)">${c.flags.join(' + ')}</td>
+      <td style="padding:4px 8px;text-align:center;font-family:var(--fm);font-size:8px;color:var(--muted)">${c.n}</td>
+      <td style="padding:4px 8px;text-align:center;font-family:var(--fh);font-size:9px;font-weight:700;color:${lc}">${pct(c.win_rate)}</td>
+      <td style="padding:4px 8px;text-align:center;font-family:var(--fh);font-size:8px;font-weight:700;color:${lc}">${c.lift != null ? c.lift.toFixed(2)+'×' : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+  <div style="padding:16px;overflow-y:auto;max-height:calc(100vh - 110px)">
+
+    <!-- meta bar -->
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;padding:8px 12px;background:var(--s2);border:1px solid var(--border);border-radius:4px">
+      <span style="font-family:var(--fm);font-size:9px;color:var(--muted)">RESOLVED SIGNALS</span>
+      <span style="font-family:var(--fh);font-size:13px;font-weight:800;color:var(--text)">${nRes}</span>
+      <span style="font-family:var(--fm);font-size:9px;color:var(--muted);margin-left:8px">BASELINE WIN RATE</span>
+      <span style="font-family:var(--fh);font-size:13px;font-weight:800;color:var(--green)">${pct(bwr)}</span>
+      <span style="font-family:var(--fm);font-size:9px;color:var(--muted);margin-left:auto">
+        Lift &gt;1.0 = better than baseline &nbsp;·&nbsp; IV: <span style="color:#00c853">≥0.3 Strong</span> <span style="color:var(--green)">0.1–0.3 Medium</span> <span style="color:var(--gold)">0.02–0.1 Weak</span> <span style="color:var(--muted2)">&lt;0.02 Noise</span>
+      </span>
+    </div>
+
+    <!-- 1. Feature ranking -->
+    ${sectionHdr('Feature Importance Ranking', 'Information Value — measures each variable\'s ability to discriminate WIN vs LOSS')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+      <div style="overflow-x:auto;border:1px solid var(--border);border-radius:4px">
+        <table style="border-collapse:collapse;width:100%">
+          <thead>
+            <tr style="background:var(--s3)">
+              <th style="padding:4px 10px;font-family:var(--fm);font-size:8px;color:var(--muted);text-align:left;border-bottom:1px solid var(--border)">VARIABLE</th>
+              <th style="padding:4px 6px;font-family:var(--fm);font-size:8px;color:var(--muted);text-align:left;border-bottom:1px solid var(--border)">TYPE</th>
+              <th style="padding:4px 10px;font-family:var(--fm);font-size:8px;color:var(--muted);text-align:left;border-bottom:1px solid var(--border)">INFORMATION VALUE</th>
+              <th style="padding:4px 8px;font-family:var(--fm);font-size:8px;color:var(--muted);text-align:left;border-bottom:1px solid var(--border)">STRENGTH</th>
+            </tr>
+          </thead>
+          <tbody>${featRows}</tbody>
+        </table>
+      </div>
+      <div>
+        <div style="font-family:var(--fm);font-size:9px;color:var(--muted2);margin-bottom:8px">TYPE LEGEND &nbsp;·&nbsp; <span style="color:#4fc3f7">BOOL</span> = yes/no flags &nbsp;<span style="color:#ce93d8">COMBO</span> = derived combos &nbsp;<span style="color:var(--gold)">CAT</span> = categories &nbsp;<span style="color:var(--muted)">ORD</span> = score/continuous buckets</div>
+        <div style="font-family:var(--fm);font-size:9px;color:var(--muted2);line-height:1.8">
+          <b style="color:var(--text)">Information Value (IV)</b> measures how well a variable separates winning from losing signals.<br>
+          Computed as: <code>Σ (%WINs − %LOSSes) × ln(%WINs / %LOSSes)</code> across each bucket.<br><br>
+          <b>Lift</b> = bucket win rate ÷ baseline win rate. A lift of 1.3× means stocks in this bucket win 30% more often than average.
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Top feature drilldowns -->
+    ${sectionHdr('Top Feature Breakdown', 'Win rate and lift per bucket for the 6 most predictive variables')}
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">${drilldowns}</div>
+
+    <!-- 3. Score bands -->
+    ${sectionHdr('Score Band Analysis', 'Does a higher total score actually produce more winners?')}
+    <div style="border:1px solid var(--border);border-radius:4px;overflow:hidden">
+      <table style="border-collapse:collapse;width:100%">
+        <thead>
+          <tr style="background:var(--s3)">
+            <th style="padding:5px 10px;font-family:var(--fm);font-size:8px;color:var(--muted);text-align:left;border-bottom:1px solid var(--border)">SCORE BAND</th>
+            <th style="padding:5px 10px;font-family:var(--fm);font-size:8px;color:var(--muted);text-align:center;border-bottom:1px solid var(--border)">N</th>
+            <th style="padding:5px 10px;font-family:var(--fm);font-size:8px;color:var(--muted);text-align:left;border-bottom:1px solid var(--border)">WIN RATE</th>
+            <th style="padding:5px 10px;font-family:var(--fm);font-size:8px;color:var(--muted);text-align:center;border-bottom:1px solid var(--border)">LIFT</th>
+            <th style="padding:5px 10px;font-family:var(--fm);font-size:8px;color:var(--muted);text-align:center;border-bottom:1px solid var(--border)">AVG RET</th>
+          </tr>
+        </thead>
+        <tbody>${bandRows}</tbody>
+      </table>
+    </div>
+
+    <!-- 4. RSI × ADX heatmap -->
+    ${sectionHdr('RSI × ADX Win Rate Heatmap', 'Which RSI+ADX combinations produce the most wins? Cells with n<3 hidden.')}
+    <div style="overflow-x:auto;border:1px solid var(--border);border-radius:4px">
+      <table style="border-collapse:collapse">
+        <thead>
+          <tr style="background:var(--s3)">
+            <th style="padding:4px 8px;font-family:var(--fm);font-size:8px;color:var(--muted);border-bottom:1px solid var(--border);border-right:1px solid var(--border)">ADX \\ RSI</th>
+            ${RSI_BANDS.map(r => `<th style="padding:4px 12px;font-family:var(--fm);font-size:8px;color:var(--muted);text-align:center;border-bottom:1px solid var(--border);border-right:1px solid var(--border2)">${r}</th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>${heatmapRows}</tbody>
+      </table>
+    </div>
+    <div style="margin-top:6px;font-family:var(--fm);font-size:8px;color:var(--muted2)">
+      Color: <span style="background:rgba(0,200,83,0.25);padding:0 4px;border-radius:2px">≥70% WIN</span>
+      <span style="background:rgba(0,200,83,0.12);padding:0 4px;border-radius:2px;margin-left:4px">55–70%</span>
+      <span style="background:rgba(255,23,68,0.08);padding:0 4px;border-radius:2px;margin-left:4px">25–40%</span>
+      <span style="background:rgba(255,23,68,0.18);padding:0 4px;border-radius:2px;margin-left:4px">&lt;25%</span>
+    </div>
+
+    <!-- 5. Boolean combinations -->
+    ${sectionHdr('Best Signal Combinations', 'Top 20 two- and three-way flag combinations ranked by win rate (min n=3)')}
+    <div style="border:1px solid var(--border);border-radius:4px;overflow:hidden">
+      <table style="border-collapse:collapse;width:100%">
+        <thead>
+          <tr style="background:var(--s3)">
+            <th style="padding:4px 10px;font-family:var(--fm);font-size:8px;color:var(--muted);text-align:left;border-bottom:1px solid var(--border)">FLAG COMBINATION</th>
+            <th style="padding:4px 8px;font-family:var(--fm);font-size:8px;color:var(--muted);text-align:center;border-bottom:1px solid var(--border)">N</th>
+            <th style="padding:4px 8px;font-family:var(--fm);font-size:8px;color:var(--muted);text-align:center;border-bottom:1px solid var(--border)">WIN RATE</th>
+            <th style="padding:4px 8px;font-family:var(--fm);font-size:8px;color:var(--muted);text-align:center;border-bottom:1px solid var(--border)">LIFT</th>
+          </tr>
+        </thead>
+        <tbody>${comboRows}</tbody>
+      </table>
+    </div>
+
+    <div style="margin-top:12px;font-family:var(--fm);font-size:8px;color:var(--muted2)">
+      Computed at ${data.computed_at || '—'} &nbsp;·&nbsp; Run <code>python regression_worker.py</code> after each batch of resolved signals.
+    </div>
+  </div>`;
 }
 
 function computeEvAnalytics() {

@@ -422,8 +422,9 @@ def _eval_compute_outcome(sig):
         sig['outcome_ret'] = round((sig['outcome_price'] - p0) / p0 * 100, 2)
 
 
-def _update_eval_prices(ltp_map, nifty_ltp=0):
-    """Append today's LTP + NIFTY price to open signals; recompute outcomes."""
+def _update_eval_prices(ltp_map, nifty_ltp=0, scan_date=None):
+    """Append EOD prices to open signals using the scan's trading date, not system clock.
+    scan_date: 'YYYY-MM-DD' from the last OHLCV row — the actual trading date of the data."""
     signals_file = os.path.join(BASE_DIR, 'data', 'signals_log.json')
     if not os.path.exists(signals_file):
         return
@@ -431,7 +432,10 @@ def _update_eval_prices(ltp_map, nifty_ltp=0):
         with open(signals_file, encoding='utf-8') as f:
             data = json.load(f)
         signals   = data.get('signals', [])
-        today     = get_ist().date().isoformat()
+        # Use the date from the OHLCV data itself — not system clock.
+        # This ensures that if scan runs after midnight, the price is still stored
+        # under the correct trading date (e.g. 2026-03-27 not 2026-03-28).
+        today     = scan_date or get_ist().date().isoformat()
         today_dt  = datetime.date.fromisoformat(today)
         updated   = 0
         for sig in signals:
@@ -504,11 +508,14 @@ def run_price_refresh():
 
     # Build instrument key list and prev_close map
     instrument_keys = []
+    key_to_sym = {}  # instrument key → ticker (handles SME -SM suffix)
     prev_map = {}   # symbol → stored price (yesterday's close from last full scan)
     for s in stocks:
         sym = s.get('ticker', '')
         if sym:
-            instrument_keys.append(f'NSE:{sym}')
+            ikey = f'NSE:{sym}-SM' if s.get('board') == 'sme' else f'NSE:{sym}'
+            instrument_keys.append(ikey)
+            key_to_sym[ikey] = sym
             prev_map[sym] = s.get('prevClose') or s.get('price', 0)
 
     # Batch quote calls (500 per call) — quote() gives ohlc.close = yesterday's EOD price
@@ -519,7 +526,7 @@ def run_price_refresh():
         try:
             result = kite.quote(batch)
             for key, val in result.items():
-                sym = key.replace('NSE:', '')
+                sym = key_to_sym.get(key, key.replace('NSE:', '').replace('-SM', ''))
                 ltp = val.get('last_price', 0)
                 eod = val.get('ohlc', {}).get('close', 0)
                 if ltp:
@@ -631,12 +638,15 @@ def main():
                     _kraw = json.load(_f)
                 _ohlcv = _kraw.get('ohlcv', {})
                 # Last row index 4 = close price
-                _ltp_map = {}
+                _ltp_map  = {}
+                _scan_date = None   # date from the OHLCV data itself
                 for _sym, _entry in _ohlcv.items():
                     _rows = _entry.get('rows', []) if isinstance(_entry, dict) else []
                     if _rows:
                         try:
                             _ltp_map[_sym] = float(_rows[-1][4])
+                            if _scan_date is None:
+                                _scan_date = _rows[-1][0]  # 'YYYY-MM-DD' from last row
                         except Exception:
                             pass
                 # NIFTY close from kite indices quote (already fetched in run_scan)
@@ -654,7 +664,7 @@ def main():
                     os.makedirs(os.path.dirname(_nf), exist_ok=True)
                     with open(_nf, 'w') as _nf_f:
                         json.dump({'date': _dt.date.today().isoformat(), 'close': _nifty}, _nf_f)
-                _update_eval_prices(_ltp_map, nifty_ltp=_nifty)
+                _update_eval_prices(_ltp_map, nifty_ltp=_nifty, scan_date=_scan_date)
             except Exception as _e:
                 print(f'[KITE] EVALS price update (non-fatal): {_e}')
 

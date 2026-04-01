@@ -37,14 +37,65 @@ _ACTIONABLE_STAGES = _ALL_STAGES   # track all stages in EVALS
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
+_DATE_OVERRIDE = None  # set by --date CLI arg; patched early in __main__ before any calls
+
 def today_str():
-    return datetime.date.today().isoformat()
+    return _DATE_OVERRIDE or datetime.date.today().isoformat()
 
 def today_dt():
+    if _DATE_OVERRIDE:
+        return datetime.date.fromisoformat(_DATE_OVERRIDE)
     return datetime.date.today()
 
+_HOLIDAYS_CACHE_FILE = os.path.join(BASE_DIR, 'data', 'evals', 'nse_holidays.json')
+
+def _load_nse_holidays():
+    """Return set of NSE CM-segment holiday dates (YYYY-MM-DD).
+    Cache refreshes once per month. Falls back to empty set on any error."""
+    import time as _time
+    try:
+        if os.path.exists(_HOLIDAYS_CACHE_FILE):
+            cached = json.load(open(_HOLIDAYS_CACHE_FILE, encoding='utf-8'))
+            # Refresh cache if older than 30 days
+            if _time.time() - cached.get('fetched_at', 0) < 30 * 86400:
+                return set(cached.get('holidays', []))
+        import requests as _req
+        s = _req.Session()
+        s.get('https://www.nseindia.com',
+              headers={'User-Agent': 'Mozilla/5.0'}, timeout=8)
+        r = s.get('https://www.nseindia.com/api/holiday-master?type=trading',
+                  headers={'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json',
+                           'Referer': 'https://www.nseindia.com'}, timeout=8)
+        raw = r.json().get('CM', [])
+        holidays = []
+        for h in raw:
+            try:
+                d = datetime.datetime.strptime(h['tradingDate'], '%d-%b-%Y').date().isoformat()
+                holidays.append(d)
+            except Exception:
+                pass
+        os.makedirs(os.path.dirname(_HOLIDAYS_CACHE_FILE), exist_ok=True)
+        json.dump({'fetched_at': _time.time(), 'holidays': holidays},
+                  open(_HOLIDAYS_CACHE_FILE, 'w'))
+        return set(holidays)
+    except Exception:
+        return set()
+
+def is_trading_day(date_str):
+    """Return True if date_str (YYYY-MM-DD) is a valid NSE trading day."""
+    try:
+        d = datetime.date.fromisoformat(date_str)
+    except Exception:
+        return False
+    if d.weekday() >= 5:          # Saturday=5, Sunday=6
+        return False
+    holidays = _load_nse_holidays()
+    return date_str not in holidays
+
 def load_stocks():
-    """Read stocks.json — returns (stocks_list, nifty_price)."""
+    """Read stocks.json — returns (stocks_list, nifty_price, trading_date).
+    trading_date is the date of the kite scan (from last_updated or price_refreshed_at),
+    NOT the system clock — ensures prices are keyed to the correct trading day."""
     try:
         with open(COMPUTED_FILE, encoding='utf-8') as f:
             raw = f.read()
@@ -53,6 +104,16 @@ def load_stocks():
         data, _ = json.JSONDecoder().raw_decode(raw)
         stocks = data.get('stocks', [])
         nifty  = data.get('indices', {}).get('NIFTY 50', {}).get('price', 0) or 0
+        # Trading date: from price_refreshed_at or last_updated in stocks.json
+        # This is the date of the actual market data, not the system clock.
+        trading_date = None
+        for key in ('price_refreshed_at', 'last_updated', 'saved_at'):
+            ts = data.get(key, '')
+            if ts and len(ts) >= 10:
+                trading_date = ts[:10]
+                break
+        if not trading_date:
+            trading_date = today_str()  # fallback to system date if not found
         # Fallback: read NIFTY close written by kite_worker during EOD
         if not nifty:
             nifty_file = os.path.join(BASE_DIR, 'data', 'evals', 'nifty_close.json')
@@ -60,14 +121,14 @@ def load_stocks():
                 try:
                     with open(nifty_file, encoding='utf-8') as nf:
                         nd = json.load(nf)
-                    if nd.get('date') == datetime.date.today().isoformat():
+                    if nd.get('date') == trading_date:
                         nifty = nd.get('close', 0) or 0
                 except Exception:
                     pass
-        return stocks, nifty
+        return stocks, nifty, trading_date
     except Exception as e:
         print(f'[EVAL] Cannot read stocks.json: {e}')
-        return [], 0
+        return [], 0, today_str()
 
 def load_signals():
     """Read signals_log.json — returns list of signal dicts."""
@@ -286,15 +347,16 @@ def build_daily_snapshot(s, nifty_price, sig_score=None):
     }
 
 
-def update_prices(signals, stocks, nifty_price, mode='eod'):
+def update_prices(signals, stocks, nifty_price, mode='eod', trading_date=None):
     """
     Append today's full snapshot to all open signals within tracking window.
     - prices{}         — kept for frontend matrix view (reads sig.prices[date])
     - nifty_prices{}   — kept for NIFTY alpha calculation
     - daily_snapshots{} — comprehensive per-day record of ALL data points
     Daily snapshots only written on EOD (not intraday price-refresh).
+    trading_date: the date of the market data (from stocks.json), not system clock.
     """
-    today = today_str()
+    today = trading_date or today_str()
     stock_map = {s.get('ticker', ''): s for s in stocks}
     updated = 0
 
@@ -344,12 +406,12 @@ def day_n_for(sig, date_str):
             return 0
 
 
-def update_stage_history(signals, stocks):
+def update_stage_history(signals, stocks, trading_date=None):
     """
     Append today's stage to stage_history for open signals if stage changed.
     Only records transitions (deduped — only appends when stage differs from last entry).
     """
-    today = today_str()
+    today = trading_date or today_str()
     stage_map = {s.get('ticker', ''): s.get('stage', 'none') for s in stocks}
     updated = 0
 
@@ -370,7 +432,7 @@ def update_stage_history(signals, stocks):
     return updated
 
 
-def check_retriggers(signals, eligible_tickers):
+def check_retriggers(signals, eligible_tickers, trading_date=None):
     """
     Record today as a retrigger date for OPEN signals in today's top-3 selection.
     eligible_tickers: set returned by update_signal_tiers() — today's top-3 per phase + all-tab top-3.
@@ -379,7 +441,7 @@ def check_retriggers(signals, eligible_tickers):
     if not eligible_tickers:
         return set()
 
-    today = today_str()
+    today = trading_date or today_str()
 
     # Most recent open signal per ticker
     open_signals = {}
@@ -471,7 +533,7 @@ def backfill_tiers(signals):
     return updated
 
 
-def log_new_signals(signals, stocks):
+def log_new_signals(signals, stocks, trading_date=None):
     """
     Log stocks with tier assignment:
       tier='signal'   — top 3 per stage (by total score) + top 3 all-tab score not already selected
@@ -482,7 +544,7 @@ def log_new_signals(signals, stocks):
     - EXPIRED:     new D0 = outcome_date + 1 calendar day (the 61st day)
     - First entry: D0 = today
     """
-    today = today_str()
+    today = trading_date or today_str()
     open_tickers = {sig.get('ticker', '') for sig in signals if not sig.get('outcome') or sig.get('outcome') == 'OPEN'}
 
     # Most-recent resolved signal per ticker (for D0 reset)
@@ -500,15 +562,19 @@ def log_new_signals(signals, stocks):
         cycle_count[sig.get('ticker', '')] += 1
 
     # ── Tier selection: which stocks get tier='signal' ────────────────────────
+    # avail = stocks without an open signal (candidates for new logging this run)
     avail = [s for s in stocks if s.get('ticker') and s.get('ticker') not in open_tickers]
 
-    # Top 3 per non-none stage
+    # Top 3 per stage — computed from ALL stocks globally, same as scanner ranking.
+    # A newly-logged stock only earns tier='signal' if it would rank in the global
+    # top 3 for its stage; comparing only within avail would produce wrong results
+    # when avail is tiny (e.g. only a few stocks have resolved their prior cycle).
     signal_tickers = set()
-    stage_groups = defaultdict(list)
-    for s in avail:
+    all_stage_groups = defaultdict(list)
+    for s in stocks:       # ALL stocks, not just avail
         stage = s.get('stage', 'none')
         if stage != 'none':
-            stage_groups[stage].append(s)
+            all_stage_groups[stage].append(s)
 
     def _phase_key(s):
         # Matches scanner phase-tab sort: F+T only desc, upsidePct desc, mcap desc
@@ -518,12 +584,13 @@ def log_new_signals(signals, stocks):
         # Matches scanner ALL-tab sort: F+T+sig desc, upsidePct desc, mcap desc
         return (-_total_score(s), -(s.get('upsidePct') or 0), -(s.get('mcap') or 0))
 
-    for stage, cands in stage_groups.items():
+    for stage, cands in all_stage_groups.items():
         for s in sorted(cands, key=_phase_key)[:3]:
             signal_tickers.add(s.get('ticker', ''))
 
-    # All-tab top 3: examine only the top-3 all-tab stocks; add any not already selected
-    all_top3 = sorted(avail, key=_all_key)[:3]
+    # All-tab top 3: from ALL non-none stocks; add any not already in signal_tickers
+    all_non_none = [s for s in stocks if s.get('stage', 'none') != 'none']
+    all_top3 = sorted(all_non_none, key=_all_key)[:3]
     extra = 0
     for s in all_top3:
         t = s.get('ticker', '')
@@ -678,7 +745,7 @@ def log_new_signals(signals, stocks):
     return new_count
 
 
-def update_signal_tiers(signals, stocks):
+def update_signal_tiers(signals, stocks, trading_date=None):
     """
     Promote today's top-3 per phase to tier='signal'. NEVER demotes.
 
@@ -736,7 +803,7 @@ def update_signal_tiers(signals, stocks):
             extra += 1
 
     # Promote only — never demote
-    today = today_str()
+    today = trading_date or today_str()
     promoted = 0
     for sig in signals:
         if sig.get('outcome') in ('WIN', 'LOSS', 'EXPIRED'):
@@ -778,20 +845,29 @@ def run_eod():
     9. Save
     """
     print('[EVAL] === EOD run starting ===')
-    stocks, nifty = load_stocks()
+    stocks, nifty, trading_date = load_stocks()
     if not stocks:
         print('[EVAL] No stocks data — aborting')
+        return
+    # Use --date override if provided, otherwise use trading date from stocks.json
+    trading_date = today_str() if _DATE_OVERRIDE else trading_date
+    print(f'[EVAL] Trading date: {trading_date}')
+
+    # Skip if today (system date) is not a trading day — weekends/holidays produce no new market data.
+    # Exception: --date override = explicit backfill, always allowed.
+    if not _DATE_OVERRIDE and not is_trading_day(datetime.date.today().isoformat()):
+        print(f'[EVAL] Today ({datetime.date.today().isoformat()}) is not a trading day — skipping update.')
         return
 
     signals = load_signals()
     print(f'[EVAL] Loaded {len(signals)} existing signals')
 
     backfill_tiers(signals)               # assign tier to any signals logged before tier field existed
-    log_new_signals(signals, stocks)
-    eligible = update_signal_tiers(signals, stocks)   # re-rank tiers; returns today's top-3 set
-    check_retriggers(signals, eligible)               # golden line only for today's top-3
-    update_stage_history(signals, stocks)
-    update_prices(signals, stocks, nifty, mode='eod')
+    log_new_signals(signals, stocks, trading_date=trading_date)
+    eligible = update_signal_tiers(signals, stocks, trading_date=trading_date)
+    check_retriggers(signals, eligible, trading_date=trading_date)
+    update_stage_history(signals, stocks, trading_date=trading_date)
+    update_prices(signals, stocks, nifty, mode='eod', trading_date=trading_date)
     recompute_all_outcomes(signals)
     save_signals(signals)
 
@@ -811,13 +887,17 @@ def run_price_refresh():
     4. Save
     """
     print('[EVAL] === Price refresh starting ===')
-    stocks, nifty = load_stocks()
+    stocks, nifty, trading_date = load_stocks()
     if not stocks:
         print('[EVAL] No stocks data — aborting')
         return
 
+    if not is_trading_day(datetime.date.today().isoformat()):
+        print(f'[EVAL] Today ({datetime.date.today().isoformat()}) is not a trading day — skipping price refresh.')
+        return
+
     signals = load_signals()
-    update_prices(signals, stocks, nifty, mode='price-refresh')
+    update_prices(signals, stocks, nifty, mode='price-refresh', trading_date=trading_date)
     recompute_all_outcomes(signals)
     save_signals(signals)
     print('[EVAL] Price refresh done')
@@ -826,9 +906,23 @@ def run_price_refresh():
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
+    import re as _re
+    # Patch date override early — before any function that calls today_str()
+    for _i, _a in enumerate(sys.argv):
+        if _a == '--date' and _i + 1 < len(sys.argv):
+            _d = sys.argv[_i + 1]
+            if _re.match(r'^\d{4}-\d{2}-\d{2}$', _d):
+                _DATE_OVERRIDE = _d
+                print(f'[EVAL] Date override: {_DATE_OVERRIDE}')
+            else:
+                print(f'[EVAL] Invalid --date format (expected YYYY-MM-DD): {_d}')
+                sys.exit(1)
+            break
+
     parser = argparse.ArgumentParser(description='EVALS signal tracker')
     parser.add_argument('--eod',           action='store_true', help='EOD full update')
     parser.add_argument('--price-refresh', action='store_true', help='Intraday price update only')
+    parser.add_argument('--date',          default=None, help='Override today date (YYYY-MM-DD) for backfill runs')
     args = parser.parse_args()
 
     if args.eod:

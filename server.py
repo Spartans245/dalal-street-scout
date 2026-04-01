@@ -409,12 +409,11 @@ def scheduler():
                     except Exception:
                         pass
 
-        # ── EOD: Full pipeline — NSE fundamentals + Kite scan + compute ──
-        elif mode == 'eod' and not eod_done_today:
-            print('[SCHEDULER] EOD: triggering full pipeline (NSE + Kite + compute) + EVALS logging...')
-            eod_done_today    = True
+        # ── EOD: owned by REFRESH_EOD.bat (Task Scheduler 3:50 PM) ──────
+        # Server no longer triggers EOD — REFRESH_EOD.bat is the single owner.
+        # Dual-trigger caused simultaneous orchestrator runs → server crash loop.
+        elif mode == 'eod':
             midday_done_today = False  # reset for tomorrow
-            spawn_orchestrator(['--eod'])  # --eod: logs top-10 EVALS signals per stage
 
         # ── SUNDAY 1 AM: Full scan — NSE universe + fundamentals + Kite + YF + compute ──
         if day == 6 and 1*60 <= mins < 1*60+30 and not sunday_done_this_week:
@@ -813,6 +812,19 @@ class Handler(BaseHTTPRequestHandler):
                         data = json.load(f)
                 else:
                     data = {}
+                self.send_json(data)
+            except Exception as e:
+                self.send_json({'error': str(e)})
+            return
+
+        if path == '/api/regression':
+            reg_file = os.path.join(BASE_DIR, 'data', 'evals', 'regression.json')
+            try:
+                if os.path.exists(reg_file):
+                    with open(reg_file, encoding='utf-8') as f:
+                        data = json.load(f)
+                else:
+                    data = {'n_resolved': 0, 'min_needed': 5, 'features': [], 'combinations': [], 'rsi_adx_heatmap': [], 'score_bands': []}
                 self.send_json(data)
             except Exception as e:
                 self.send_json({'error': str(e)})
