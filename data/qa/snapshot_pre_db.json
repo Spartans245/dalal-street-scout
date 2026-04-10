@@ -1,0 +1,349 @@
+{
+  "signals_log": {
+    "total_signals": 4328,
+    "signal_tier_count": 92,
+    "outcomes": {
+      "OPEN": 2444,
+      "LOSS": 727,
+      "WIN": 1157
+    },
+    "sample_signals": [
+      {
+        "ticker": "STYLEBAAZA",
+        "tier": "signal",
+        "tier_date": "2026-03-24",
+        "day0": "2026-03-24",
+        "price_d0": 282.4,
+        "outcome": "OPEN",
+        "outcome_date": null,
+        "outcome_ret": null,
+        "prices": {
+          "2026-03-24": 282.4,
+          "2026-03-25": 281.8,
+          "2026-03-27": 289.0,
+          "2026-03-30": 272.0,
+          "2026-04-01": 296.6,
+          "2026-04-02": 301.75,
+          "2026-04-06": 300.3,
+          "2026-04-07": 284.35,
+          "2026-04-08": 292.0,
+          "2026-04-09": 290.0
+        },
+        "stage_history": [
+          {
+            "date": "2026-03-24",
+            "stage": "breakout"
+          },
+          {
+            "date": "2026-03-25",
+            "stage": "none",
+            "day_n": 1
+          }
+        ],
+        "retrigger_dates": [
+          {
+            "date": "2026-03-24",
+            "day_n": 0
+          }
+        ],
+        "stage": "breakout",
+        "score": 52,
+        "rsi": 51.2,
+        "adx": 33.1
+      },
+      {
+        "ticker": "TASTYBITE",
+        "tier": "signal",
+        "tier_date": "2026-03-24",
+        "day0": "2026-03-24",
+        "price_d0": 7178.0,
+        "outcome": "OPEN",
+        "outcome_date": null,
+        "outcome_ret": null,
+        "prices": {
+          "2026-03-24": 7178.0,
+          "2026-03-25": 7170.0,
+          "2026-03-27": 6829.0,
+          "2026-03-30": 6535.0,
+          "2026-04-01": 6660.0,
+          "2026-04-02": 6779.5,
+          "2026-04-06": 6763.0,
+          "2026-04-07": 6794.5,
+          "2026-04-08": 7091.0,
+          "2026-04-09": 6940.0
+        },
+        "stage_history": [
+          {
+            "date": "2026-03-24",
+            "stage": "breakout"
+          },
+          {
+            "date": "2026-03-25",
+            "stage": "none",
+            "day_n": 1
+          }
+        ],
+        "retrigger_dates": [
+          {
+            "date": "2026-03-24",
+            "day_n": 0
+          }
+        ],
+        "stage": "breakout",
+        "score": 46,
+        "rsi": 52.0,
+        "adx": 23.7
+      },
+      {
+        "ticker": "RILINFRA",
+        "tier": "signal",
+        "tier_date": "2026-03-24",
+        "day0": "2026-03-24",
+        "price_d0": 36.25,
+        "outcome": "OPEN",
+        "outcome_date": null,
+        "outcome_ret": null,
+        "prices": {
+          "2026-03-24": 36.25,
+          "2026-03-25": 37.4,
+          "2026-03-27": 36.05,
+          "2026-04-01": 36.3,
+          "2026-04-02": 35.7,
+          "2026-04-06": 36.0,
+          "2026-04-07": 35.75,
+          "2026-04-08": 33.45,
+          "2026-03-30": 34.25,
+          "2026-04-09": 34.0
+        },
+        "stage_history": [
+          {
+            "date": "2026-03-24",
+            "stage": "post_cross"
+          },
+          {
+            "date": "2026-03-28",
+            "stage": "pullback",
+            "day_n": 4
+          },
+          {
+            "date": "2026-04-01",
+            "stage": "trending",
+            "day_n": 8
+          },
+          {
+            "date": "2026-04-09",
+            "stage": "none",
+            "day_n": 16
+          }
+        ],
+        "retrigger_dates": [
+          {
+            "date": "2026-03-24",
+            "day_n": 0
+          }
+        ],
+        "stage": "post_cross",
+        "score": 69,
+        "rsi": 55.9,
+        "adx": 15.4
+      },
+      {
+        "ticker": "ENTERO",
+        "tier": "signal",
+        "tier_date": "2026-04-09",
+        "day0": "2026-03-24",
+        "price_d0": 1229.0,
+        "outcome": "OPEN",
+        "outcome_date": null,
+        "outcome_ret": null,
+        "prices": {
+          "2026-03-24": 1229.0,
+          "2026-03-25": 1234.9,
+          "2026-03-27": 1242.0,
+          "2026-03-30": 1252.4,
+          "2026-04-01": 1231.5,
+          "2026-04-02": 1243.8,
+          "2026-04-06": 1242.4,
+          "2026-04-07": 1161.0,
+          "2026-04-08": 1166.0,
+          "2026-04-09": 1181.2
+        },
+        "stage_history": [
+          {
+            "date": "2026-03-24",
+            "stage": "post_cross"
+          },
+          {
+            "date": "2026-04-02",
+            "stage": "coiling",
+            "day_n": 9
+          },
+          {
+            "date": "2026-04-08",
+            "stage": "trending",
+            "day_n": 15
+          }
+        ],
+        "retrigger_dates": [
+          {
+            "date": "2026-03-24",
+            "day_n": 0
+          },
+          {
+            "date": "2026-04-09",
+            "day_n": 16
+          }
+        ],
+        "stage": "post_cross",
+        "score": 62,
+        "rsi": 72.7,
+        "adx": 22.2
+      },
+      {
+        "ticker": "ACTIVEINFR",
+        "tier": "signal",
+        "tier_date": "2026-03-24",
+        "day0": "2026-03-24",
+        "price_d0": 175.5,
+        "outcome": "OPEN",
+        "outcome_date": null,
+        "outcome_ret": null,
+        "prices": {
+          "2026-03-24": 175.5,
+          "2026-03-25": 180.8,
+          "2026-03-27": 178.0,
+          "2026-03-30": 170.0,
+          "2026-04-01": 170.0,
+          "2026-04-02": 170.0,
+          "2026-04-08": 170.0,
+          "2026-04-09": 170.0
+        },
+        "stage_history": [
+          {
+            "date": "2026-03-24",
+            "stage": "pullback"
+          },
+          {
+            "date": "2026-03-25",
+            "stage": "post_cross",
+            "day_n": 1
+          },
+          {
+            "date": "2026-03-28",
+            "stage": "pullback",
+            "day_n": 4
+          },
+          {
+            "date": "2026-03-30",
+            "stage": "post_cross",
+            "day_n": 6
+          }
+        ],
+        "retrigger_dates": [
+          {
+            "date": "2026-03-24",
+            "day_n": 0
+          }
+        ],
+        "stage": "pullback",
+        "score": 77,
+        "rsi": 54.5,
+        "adx": 16.0
+      }
+    ]
+  },
+  "stocks": {
+    "total": 2564,
+    "saved_at": "2026-04-09T16:50:41.187040",
+    "stage_counts": {
+      "none": 1881,
+      "coiling": 278,
+      "breakout": 64,
+      "trending": 168,
+      "post_cross": 164,
+      "pullback": 9
+    },
+    "sample_stock": {
+      "ticker": "ADANIENSOL",
+      "name": "Adani Energy Solutions Limited",
+      "sector": "Power Distribution",
+      "board": "main",
+      "price": 1126.15,
+      "prevClose": 1078.75,
+      "change": 4.39,
+      "pe": 54.7,
+      "mcap": 129114,
+      "promoterHolding": 0,
+      "pledging": 0,
+      "debtEq": 1.87,
+      "roe": null,
+      "roeWarn": "na",
+      "deFlag": "HIGH DEBT",
+      "roeFlag": null,
+      "wk38High": 1085.0,
+      "wk38Low": 744.9,
+      "wk52High": 1085.0,
+      "wk52Low": 744.9,
+      "near52High": true,
+      "pctFrom38High": -1.0,
+      "pctFrom38Low": 44.2,
+      "rsi": 62.1,
+      "adx": 11.5,
+      "macd": false,
+      "emaSignal": "cross",
+      "emaCross": true,
+      "emaCrossDays": 2,
+      "emaTrend": false,
+      "volConfirm": true,
+      "crossScore": 18,
+      "emaPreCross": false,
+      "emaPostCross": true,
+      "emaPullback": false,
+      "golden": true,
+      "vpbScore": 0,
+      "vpbDetail": "none",
+      "vpbRangeHeight": 181.69999999999993,
+      "avg20Vol": 1880650.6,
+      "priceCoiling": false,
+      "volShrinking": false,
+      "volRatio": 1.13,
+      "closePos": 0.658,
+      "ema14": 1000.6,
+      "ema50": 988.33,
+      "emaGapPct": 1.143,
+      "ema14Rising": true,
+      "ema14RisingFast": true,
+      "near38High": true,
+      "stage": "post_cross",
+      "catalysts": [],
+      "dailyVol": 229.3,
+      "score": 45,
+      "fScore": 20,
+      "cScore": 0,
+      "tScore": 25,
+      "ctScore": 0,
+      "lScore": 0,
+      "ath": 1085.0,
+      "mmTarget": 1255.7,
+      "targetPrice": 1085.0,
+      "targetType": "52W",
+      "upsidePct": -3.7,
+      "upsideRs": 11.0,
+      "mmConditional": false,
+      "data_source": "kite",
+      "prevStages": {
+        "d_minus_5": "none",
+        "d_minus_10": "trending",
+        "d_minus_20": "trending"
+      },
+      "sectorMedianPe": 54.7,
+      "peVsSector": 0.0
+    }
+  },
+  "file_sizes_mb": {
+    "signals_log.json": 34.9,
+    "stocks.json": 7.03
+  },
+  "captured_at": "2026-04-10T12:16:27.416604",
+  "version": "v11-pre-db"
+}
