@@ -181,18 +181,24 @@ MAX_CALENDAR_DAYS = 60    # expire 60 calendar days after D0 (e.g. Mar 24 → Ma
 def compute_outcome(sig):
     """
     Compute WIN/LOSS/OPEN for a signal.
-    WIN     = first day price >= entry × 1.15  (any day from D1)
-    LOSS    = first day price <= entry × 0.91  (any day; checked before WIN)
-    EXPIRED = 60 calendar days elapsed from D0 with no WIN or LOSS
+    D0 = tier_date (day the stock entered the Stock-Wise screen). Its price is the baseline.
+    WIN     = first day AFTER D0 where price >= D0 price × 1.15
+    LOSS    = first day AFTER D0 where price <= D0 price × 0.91
+    EXPIRED = 60 calendar days elapsed from day0 with no WIN or LOSS
     Updates sig in-place. Already-resolved (WIN/LOSS/EXPIRED) signals are skipped.
     """
     if sig.get('outcome') in ('WIN', 'LOSS', 'EXPIRED'):
         return
 
     prices_dict = sig.get('prices', {})
-    p0  = sig.get('price_d0', 0)
     day0 = sig.get('day0', '')
-    if not prices_dict or not p0 or not day0:
+    if not prices_dict or not day0:
+        return
+
+    # Baseline: price on tier_date (stock-wise entry); fall back to price_d0
+    tier_date = sig.get('tier_date') or day0
+    p0 = prices_dict.get(tier_date) or sig.get('price_d0', 0)
+    if not p0:
         return
 
     try:
@@ -201,7 +207,8 @@ def compute_outcome(sig):
     except ValueError:
         return
 
-    sorted_dates = sorted(prices_dict.keys())
+    # Evaluate only dates strictly after tier_date (D0 is entry, not a trigger)
+    sorted_dates = [d for d in sorted(prices_dict.keys()) if d > tier_date]
 
     for day_idx, date_str in enumerate(sorted_dates):
         price = prices_dict.get(date_str, 0)
@@ -210,7 +217,7 @@ def compute_outcome(sig):
         # Loss checked first — loss takes priority if both thresholds cross same day
         if price <= p0 * LOSS_TARGET:
             sig['outcome']       = 'LOSS'
-            sig['outcome_day']   = day_idx
+            sig['outcome_day']   = day_idx + 1
             sig['outcome_date']  = date_str
             sig['outcome_price'] = price
             sig['outcome_ret']   = round((price - p0) / p0 * 100, 2)
@@ -218,19 +225,19 @@ def compute_outcome(sig):
         # Win: triggered the moment price first reaches +15%
         if price >= p0 * WIN_TARGET:
             sig['outcome']       = 'WIN'
-            sig['outcome_day']   = day_idx
+            sig['outcome_day']   = day_idx + 1
             sig['outcome_date']  = date_str
             sig['outcome_price'] = price
             sig['outcome_ret']   = round((price - p0) / p0 * 100, 2)
             return
-        # Expiry: 60 calendar days from D0 have elapsed
+        # Expiry: 60 calendar days from day0 have elapsed
         try:
             current_date = datetime.date.fromisoformat(date_str)
         except ValueError:
             continue
         if current_date >= expiry_date:
             sig['outcome']       = 'EXPIRED'
-            sig['outcome_day']   = day_idx
+            sig['outcome_day']   = day_idx + 1
             sig['outcome_date']  = date_str
             sig['outcome_price'] = price
             sig['outcome_ret']   = round((price - p0) / p0 * 100, 2)

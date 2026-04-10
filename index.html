@@ -4032,8 +4032,9 @@ async function pollStatus(){
       document.getElementById('progressBar').classList.remove('show');
       serverCount = d.count || 0;
       serverLastUpdated = d.last_updated || '';
+      const _prevPriceRefreshedAt = serverPriceRefreshedAt;
       if(d.price_refreshed_at) serverPriceRefreshedAt = d.price_refreshed_at;
-      if(d.last_updated !== lastUpdated){ await loadStocks(d); fetchIndices(); }
+      if(d.last_updated !== lastUpdated || (d.price_refreshed_at && d.price_refreshed_at !== _prevPriceRefreshedAt)){ await loadStocks(d); fetchIndices(); }
       else renderIndicesBar(window._lastIndexData||null);
       if(allStocks.length > 0 && document.getElementById('planEmpty').style.display !== 'none') renderPlan();
     }

@@ -192,9 +192,13 @@ def compute_one(symbol, kite_entry, nse_fund, yf_fund):
         pe   = float(nse.get('pe') or 0)
         mcap = int(nse.get('mcap') or 0)
 
-        # NSE sector label; fallback chain
+        # NSE sector label; fallback chain — guard against encoding corruption
         sector = nse.get('sector') or 'Others'
+        if not isinstance(sector, str) or len(sector) > 100:
+            sector = 'Others'
         name   = nse.get('name') or symbol
+        if not isinstance(name, str) or len(name) > 200:
+            name = symbol
 
         # NSE true 52W high/low (separate from Kite 38W)
         wk52High_nse = float(nse.get('wk52High') or 0)

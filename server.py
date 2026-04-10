@@ -784,6 +784,12 @@ class Handler(BaseHTTPRequestHandler):
                         data = json.load(f)
                 else:
                     data = {'signals': []}
+                # Strip heavy analytics-only fields not used by the frontend
+                _STRIP = {'daily_snapshots', 'nifty_prices'}
+                data['signals'] = [
+                    {k: v for k, v in s.items() if k not in _STRIP}
+                    for s in data.get('signals', [])
+                ]
                 self.send_json(data)
             except Exception as e:
                 self.send_json({'signals': [], 'error': str(e)})
