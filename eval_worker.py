@@ -38,6 +38,7 @@ _ACTIONABLE_STAGES = _ALL_STAGES   # track all stages in EVALS
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 _DATE_OVERRIDE = None  # set by --date CLI arg; patched early in __main__ before any calls
+_FORCE         = False # set by --force CLI arg; bypasses trading-day guard only (does NOT change trading_date)
 
 def today_str():
     return _DATE_OVERRIDE or datetime.date.today().isoformat()
@@ -856,13 +857,15 @@ def run_eod():
     if not stocks:
         print('[EVAL] No stocks data — aborting')
         return
-    # Use --date override if provided, otherwise use trading date from stocks.json
-    trading_date = today_str() if _DATE_OVERRIDE else trading_date
+    # Use --date override if provided, otherwise use trading date from stocks.json saved_at.
+    # --force only bypasses the guard — trading_date still comes from stocks.json.
+    if _DATE_OVERRIDE:
+        trading_date = _DATE_OVERRIDE
     print(f'[EVAL] Trading date: {trading_date}')
 
     # Skip if today (system date) is not a trading day — weekends/holidays produce no new market data.
-    # Exception: --date override = explicit backfill, always allowed.
-    if not _DATE_OVERRIDE and not is_trading_day(datetime.date.today().isoformat()):
+    # Exception: --date or --force flag = manual/backfill run, always allowed.
+    if not _DATE_OVERRIDE and not _FORCE and not is_trading_day(datetime.date.today().isoformat()):
         print(f'[EVAL] Today ({datetime.date.today().isoformat()}) is not a trading day — skipping update.')
         return
 
@@ -930,7 +933,13 @@ if __name__ == '__main__':
     parser.add_argument('--eod',           action='store_true', help='EOD full update')
     parser.add_argument('--price-refresh', action='store_true', help='Intraday price update only')
     parser.add_argument('--date',          default=None, help='Override today date (YYYY-MM-DD) for backfill runs')
+    parser.add_argument('--force',         action='store_true', help='Skip trading-day guard (manual reruns)')
     args = parser.parse_args()
+
+    if args.force:
+        import sys as _sys
+        _sys.modules[__name__].__dict__['_FORCE'] = True
+        print('[EVAL] --force: trading-day guard bypassed (trading_date still from stocks.json)')
 
     if args.eod:
         run_eod()

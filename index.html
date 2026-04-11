@@ -3558,8 +3558,9 @@ async function renderCtrl(){
   const price   = d.price   || {};
   const yf      = d.yf      || {};
   const compute = d.compute || {};
+  const evals   = d.evals   || {};
 
-  const anyRunning = d.nse_pid || d.yf_pid || d.compute_pid || d.pipeline_pid;
+  const anyRunning = d.nse_pid || d.yf_pid || d.compute_pid || d.pipeline_pid || d.evals_pid;
   const runBadge = (pid) => pid ? ' <span class="ctrl-run">● RUNNING</span>' : '';
   const runBadgeStatus = (s) => s==='running' ? ' <span class="ctrl-run">● RUNNING</span>' : '';
   const statusBadge = (s) => {
@@ -3581,18 +3582,17 @@ async function renderCtrl(){
           UPDATE EVERYTHING${runBadge(anyRunning)}
         </div>
         <div style="font-family:var(--fm);font-size:9px;color:var(--muted)">
-          <b>NSE universe</b> (EQUITY_L.csv + SME Emerge) → <b>NSE fundamentals + Kite scan</b> (parallel) + <b>YF D/E+ROE</b> (background) → <b>compute</b>
-          · UI updates after compute · re-updates when YF patches D/E+ROE
+          <b>NSE universe</b> (EQUITY_L.csv + SME Emerge) → <b>NSE fundamentals + Kite scan</b> (parallel) + <b>YF D/E+ROE</b> (background) → <b>compute</b> · UI updates after compute · re-updates when YF patches D/E+ROE → <b>EVALS</b> auto-runs after compute
         </div>
         <div style="font-family:var(--fm);font-size:9px;color:var(--muted2);margin-top:2px">
-          ⏱ Universe (~1 min) → NSE (~40 min) + Kite (~20 min) in parallel → compute (~5 min) + YF running alongside · total <b style="color:var(--blue)">~50–60 min</b>
+          ⏱ Universe (~1 min) → NSE (~40 min) + Kite (~20 min) in parallel → compute (~5 min) + YF running alongside → EVALS (~2 min) · total <b style="color:var(--blue)">~50–60 min</b>
         </div>
       </div>
       <button class="ctrl-btn ctrl-btn-green" style="white-space:nowrap;padding:6px 18px;font-size:11px" id="btnAll"
         onclick="ctrlTrigger('/api/rescan','btnAll')" ${anyRunning?'disabled':''}>▶ RUN ALL</button>
     </div>
-    <!-- metrics grid: 5 workers -->
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">
+    <!-- metrics grid: 6 workers -->
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px">
       <!-- Universe -->
       <div>
         <div style="font-family:var(--fm);font-size:9px;font-weight:700;letter-spacing:0.5px;color:var(--muted);margin-bottom:4px;padding-bottom:3px;border-bottom:1px solid var(--border2)">
@@ -3648,9 +3648,20 @@ async function renderCtrl(){
         <div class="ctrl-row"><span class="ctrl-lbl">Errors</span><span class="ctrl-val">${errVal(compute.errors)}</span></div>
         <div class="ctrl-row"><span class="ctrl-lbl">Duration</span><span class="ctrl-val">${fmtElapsed(compute.duration)}</span></div>
       </div>
+      <!-- EVALS -->
+      <div>
+        <div style="font-family:var(--fm);font-size:9px;font-weight:700;letter-spacing:0.5px;color:var(--muted);margin-bottom:4px;padding-bottom:3px;border-bottom:1px solid var(--border2)">
+          EVALS${runBadge(d.evals_pid)}
+        </div>
+        <div class="ctrl-row"><span class="ctrl-lbl">Status</span><span class="ctrl-val">${statusBadge(evals.status)}</span></div>
+        <div class="ctrl-row"><span class="ctrl-lbl">Last run</span><span class="ctrl-val">${fmtDT(evals.saved_at)}</span></div>
+        <div class="ctrl-row"><span class="ctrl-lbl">Stockwise</span><span class="ctrl-val ctrl-ok">${evals.count!==undefined?evals.count:'—'}</span></div>
+        <div class="ctrl-row"><span class="ctrl-lbl">Errors</span><span class="ctrl-val">${errVal(evals.errors)}</span></div>
+        <div class="ctrl-row"><span class="ctrl-lbl">Duration</span><span class="ctrl-val">${fmtElapsed(evals.duration)}</span></div>
+      </div>
     </div>
     <div class="ctrl-schedule" style="margin-top:8px">
-      <span>⏱ Auto-runs Sunday 1:00 AM IST · also at EOD 3:30 PM IST Mon–Fri (NSE + Kite only, no YF)</span>
+      <span>⏱ Auto-runs Sunday 1:00 AM IST · also at EOD 3:30 PM IST Mon–Fri (NSE + Kite only, no YF) · EVALS auto-runs after every pipeline</span>
       <span>Next Sunday: ${nextSundayYF()}</span>
     </div>
   </div>
@@ -3687,7 +3698,7 @@ async function renderCtrl(){
     <!-- CARD 2: TECHNICALS (Kite + Compute) -->
     <div class="ctrl-card">
       <div class="ctrl-card-title">
-        <span>TECHNICALS · KITE SCAN + COMPUTE${runBadgeStatus(kite.status)}</span>
+        <span>TECHNICALS · KITE OHLCV SCAN${runBadgeStatus(kite.status)}</span>
         <button class="ctrl-btn ctrl-btn-gold" id="btnKite" onclick="ctrlTrigger('/api/refresh/kite','btnKite')" ${d.nse_pid||d.pipeline_pid?'disabled':''}>▶ Run Now</button>
       </div>
       <div style="font-family:var(--fm);font-size:9px;background:rgba(210,153,34,0.06);border-radius:3px;padding:5px 8px;margin-bottom:8px;border-left:2px solid var(--gold)">
@@ -3700,13 +3711,11 @@ async function renderCtrl(){
           <div>→ PE / MCap / sector unchanged — uses last NSE run's data</div>
         </div>
       </div>
-      <div class="ctrl-row"><span class="ctrl-lbl">Kite status</span><span class="ctrl-val">${statusBadge(kite.status)}</span></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Status</span><span class="ctrl-val">${statusBadge(kite.status)}</span></div>
       <div class="ctrl-row"><span class="ctrl-lbl">Last run</span><span class="ctrl-val">${fmtDT(kite.saved_at)}</span></div>
       <div class="ctrl-row"><span class="ctrl-lbl">Tickers succeeded</span><span class="ctrl-val ctrl-ok">${kite.count!==undefined?kite.count:'—'}</span></div>
       <div class="ctrl-row"><span class="ctrl-lbl">Tickers failed</span><span class="ctrl-val">${errVal(kite.errors)}</span></div>
-      <div class="ctrl-row"><span class="ctrl-lbl">Time spent (kite)</span><span class="ctrl-val">${fmtElapsed(kite.duration)}</span></div>
-      <div class="ctrl-row"><span class="ctrl-lbl">Compute last run</span><span class="ctrl-val">${fmtDT(compute.saved_at)}</span></div>
-      <div class="ctrl-row"><span class="ctrl-lbl">Compute status</span><span class="ctrl-val">${statusBadge(compute.status)}</span></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Time spent</span><span class="ctrl-val">${fmtElapsed(kite.duration)}</span></div>
       <div class="ctrl-schedule">
         <span>⏱ Auto: 12:00 PM IST · Mon–Fri · EOD full pipeline also re-runs Kite</span>
         <span>Next: ${nextMidday()}</span>
@@ -3740,6 +3749,61 @@ async function renderCtrl(){
       </div>
     </div>
 
+    <!-- CARD 4: COMPUTE -->
+    <div class="ctrl-card">
+      <div class="ctrl-card-title">
+        <span>COMPUTE · STAGE + SCORING${runBadge(d.compute_pid)}</span>
+        <button class="ctrl-btn ctrl-btn-blue" id="btnCompute" onclick="ctrlTrigger('/api/refresh/compute','btnCompute')" ${d.compute_pid||d.pipeline_pid?'disabled':''}>▶ Re-Compute</button>
+      </div>
+      <div style="font-family:var(--fm);font-size:9px;background:rgba(88,166,255,0.06);border-radius:3px;padding:5px 8px;margin-bottom:8px;border-left:2px solid var(--blue)">
+        <div style="color:var(--blue);font-weight:600">What happens:</div>
+        <div style="color:var(--muted);margin-top:2px;line-height:1.7">
+          <div>→ Merges NSE fundamentals + Kite OHLCV + YF D/E &amp; ROE into one record per stock</div>
+          <div>→ Runs classify_stage() — assigns POST-CROSS / PRE-CROSS / BREAKOUT / COILING / PULLBACK / TRENDING / NONE</div>
+          <div>→ Calculates F + T + Signal scores (max 52 stage tabs, max 73 ALL tab)</div>
+          <div>→ Outputs to <code>data/computed/stocks.json</code> — server reloads automatically</div>
+          <div style="color:var(--muted2)">Note: run this after any raw data change to refresh the scanner</div>
+        </div>
+      </div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Status</span><span class="ctrl-val">${statusBadge(compute.status)}</span></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Last run</span><span class="ctrl-val">${fmtDT(compute.saved_at)}</span></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Stocks computed</span><span class="ctrl-val ctrl-ok">${compute.count!==undefined?compute.count:'—'}</span></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Errors</span><span class="ctrl-val">${errVal(compute.errors)}</span></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Time spent</span><span class="ctrl-val">${fmtElapsed(compute.duration)}</span></div>
+      <div class="ctrl-schedule">
+        <span>⏱ Auto-runs after every Kite scan · also triggered after NSE fundamentals</span>
+        <span></span>
+      </div>
+    </div>
+
+    <!-- CARD 5: EVALS -->
+    <div class="ctrl-card">
+      <div class="ctrl-card-title">
+        <span>EVALS · SIGNAL TRACKER${runBadge(d.evals_pid)}</span>
+        <button class="ctrl-btn ctrl-btn-blue" id="btnEvals" onclick="ctrlTrigger('/api/evals/run','btnEvals')" ${d.evals_pid||d.pipeline_pid?'disabled':''}>▶ Run EVALS</button>
+      </div>
+      <div style="font-family:var(--fm);font-size:9px;background:rgba(88,166,255,0.06);border-radius:3px;padding:5px 8px;margin-bottom:8px;border-left:2px solid var(--blue)">
+        <div style="color:var(--blue);font-weight:600">What happens:</div>
+        <div style="color:var(--muted);margin-top:2px;line-height:1.7">
+          <div>→ Logs today's top-3 stocks per stage phase into stockwise screen</div>
+          <div>→ Updates prices for all open signals (WIN +15% / LOSS −9% / EXPIRED 60d)</div>
+          <div>→ Promotes / demotes signal-tier picks · detects retriggers</div>
+          <div>→ Writes to <code>data/signals_log.json</code> — browser reloads automatically</div>
+          <div style="color:var(--muted2)">Note: auto-runs after every full pipeline · use manual trigger after a Kite-only rerun</div>
+        </div>
+      </div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Status</span><span class="ctrl-val">${statusBadge(evals.status)}</span></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Last run</span><span class="ctrl-val">${fmtDT(evals.saved_at)}</span></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Stockwise signals</span><span class="ctrl-val ctrl-ok">${evals.count!==undefined?evals.count:'—'}</span></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Errors</span><span class="ctrl-val">${errVal(evals.errors)}</span></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Time spent</span><span class="ctrl-val">${fmtElapsed(evals.duration)}</span></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Last message</span><span class="ctrl-val" style="color:var(--muted)">${evals.message||'—'}</span></div>
+      <div class="ctrl-schedule">
+        <span>⏱ Auto-runs after every full pipeline (RUN ALL + EOD) · manual for Kite-only reruns</span>
+        <span></span>
+      </div>
+    </div>
+
   </div>
 
   <!-- CARD: PRICE REFRESH -->
@@ -3757,7 +3821,7 @@ async function renderCtrl(){
       <button class="ctrl-btn ctrl-btn-blue" style="white-space:nowrap;padding:6px 14px;font-size:11px" id="btnPrice"
         onclick="ctrlTrigger('/api/ctrl/run_prices','btnPrice')" ${d.pipeline_pid?'disabled':''}>▶ Refresh Now</button>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
       <div>
         <div style="font-family:var(--fm);font-size:9px;font-weight:700;letter-spacing:0.5px;color:var(--muted);margin-bottom:4px;padding-bottom:3px;border-bottom:1px solid var(--border2)">STATUS</div>
         <div class="ctrl-row"><span class="ctrl-lbl">Status</span><span class="ctrl-val">${statusBadge(price.status)}</span></div>
@@ -3778,14 +3842,6 @@ async function renderCtrl(){
         <div class="ctrl-row"><span class="ctrl-lbl">Frequency</span><span class="ctrl-val">Every 5 min</span></div>
         <div class="ctrl-row"><span class="ctrl-lbl">Window</span><span class="ctrl-val">9:15–3:30 IST</span></div>
         <div class="ctrl-row"><span class="ctrl-lbl">Days</span><span class="ctrl-val">Mon–Fri</span></div>
-      </div>
-      <div>
-        <div style="font-family:var(--fm);font-size:9px;font-weight:700;letter-spacing:0.5px;color:var(--muted);margin-bottom:4px;padding-bottom:3px;border-bottom:1px solid var(--border2)">COMPUTE</div>
-        <div class="ctrl-row"><span class="ctrl-lbl">Last compute</span><span class="ctrl-val">${fmtDT(compute.saved_at)}</span></div>
-        <div class="ctrl-row"><span class="ctrl-lbl">Stocks</span><span class="ctrl-val ctrl-ok">${compute.count||'—'}</span></div>
-        <div class="ctrl-row"><span class="ctrl-lbl">Duration</span><span class="ctrl-val">${fmtElapsed(compute.duration)}</span></div>
-        <button class="ctrl-btn ctrl-btn-blue" style="margin-top:6px;padding:2px 10px;font-size:9px;width:100%" id="btnCompute"
-          onclick="ctrlTrigger('/api/refresh/compute','btnCompute')" ${d.compute_pid?'disabled':''}>▶ Re-Compute</button>
       </div>
     </div>
     <div style="font-family:var(--fm);font-size:8px;color:var(--muted2);margin-top:6px">${price.message||'No price refresh recorded yet this session'}</div>

@@ -104,6 +104,7 @@ state = {
     'nse_pid':       None,   # nse_worker subprocess PID
     'yf_pid':        None,   # yf_worker subprocess PID
     'compute_pid':   None,   # compute subprocess PID
+    'evals_pid':     None,   # eval_worker subprocess PID
 }
 state_lock = threading.Lock()
 
@@ -253,6 +254,9 @@ def spawn_orchestrator(extra_args=None):
             with state_lock:
                 state['status'] = 'live' if mode == 'open' else 'eod'
             print(f'[SERVER] Pipeline done — stocks reloaded')
+            # Auto-run EVALS worker after every full pipeline run
+            spawn_evals_worker(force=True)
+            print(f'[SERVER] EVALS worker auto-started after pipeline')
 
         threading.Thread(target=_run, daemon=True).start()
     return True
@@ -344,6 +348,71 @@ def spawn_compute():
             load_computed(force=True)
             print('[SERVER] Compute done — stocks reloaded')
     threading.Thread(target=_run, daemon=True).start()
+    return True
+
+
+_evals_lock = threading.Lock()
+
+def spawn_evals_worker(force=False):
+    """Launch eval_worker.py --eod in background. Returns False if already running."""
+    with _evals_lock:
+        with state_lock:
+            if state.get('evals_pid'):
+                return False  # already running
+        cmd = [PYTHON, '-W', 'ignore',
+               os.path.join(BASE_DIR, 'eval_worker.py'), '--eod']
+        if force:
+            cmd.append('--force')
+        print(f'[SERVER] Spawning eval_worker: {" ".join(cmd)}')
+
+        _evals_status_path = os.path.join(BASE_DIR, 'data', 'status', 'evals.json')
+
+        def _write_evals_status(status, count=None, errors=0, duration=None, message=''):
+            obj = {
+                'status':   status,
+                'saved_at': datetime.datetime.now(datetime.timezone.utc).astimezone().isoformat(),
+                'count':    count,
+                'errors':   errors,
+                'duration': duration,
+                'message':  message,
+            }
+            try:
+                with open(_evals_status_path, 'w', encoding='utf-8') as f:
+                    json.dump(obj, f)
+            except Exception as e:
+                print(f'[SERVER] Could not write evals status: {e}')
+
+        def _run():
+            import time as _t
+            t0 = _t.time()
+            _write_evals_status('running')
+            proc = subprocess.Popen(cmd, cwd=BASE_DIR,
+                creationflags=subprocess.BELOW_NORMAL_PRIORITY_CLASS)
+            with state_lock:
+                state['evals_pid'] = proc.pid
+            proc.wait()
+            elapsed = round(_t.time() - t0, 1)
+            with state_lock:
+                state['evals_pid'] = None
+            if proc.returncode == 0:
+                # Count signal-tier stocks from signals_log
+                try:
+                    sl_path = os.path.join(BASE_DIR, 'data', 'signals_log.json')
+                    with open(sl_path, encoding='utf-8') as f:
+                        sl = json.load(f)
+                    sig_count = sum(1 for s in sl.get('signals', []) if s.get('tier') == 'signal')
+                    open_count = sum(1 for s in sl.get('signals', []) if s.get('outcome') == 'OPEN')
+                    _write_evals_status('done', count=sig_count, duration=elapsed,
+                                        message=f'{sig_count} stockwise · {open_count} open signals')
+                except Exception:
+                    _write_evals_status('done', duration=elapsed)
+                print(f'[SERVER] eval_worker done ({elapsed}s)')
+            else:
+                _write_evals_status('error', errors=1, duration=elapsed,
+                                    message=f'exit code {proc.returncode}')
+                print(f'[SERVER] eval_worker exited with code {proc.returncode}')
+
+        threading.Thread(target=_run, daemon=True).start()
     return True
 
 
@@ -684,6 +753,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({'ok': ok, 'msg': 'Kite scan + compute started' if ok else 'Already running'})
             return
 
+        if path == '/api/evals/run':
+            with state_lock:
+                already = bool(state.get('evals_pid'))
+            if already:
+                self.send_json({'ok': False, 'msg': 'EVALS worker already running'})
+            else:
+                ok = spawn_evals_worker(force=True)
+                self.send_json({'ok': ok, 'msg': 'EVALS worker started' if ok else 'Already running'})
+            return
+
         if path == '/api/refresh/yf':
             ok = spawn_yf_worker()
             self.send_json({'ok': ok, 'msg': 'YF fundamentals started' if ok else 'Already running'})
@@ -702,12 +781,14 @@ class Handler(BaseHTTPRequestHandler):
                     'nse_pid':       state.get('nse_pid'),
                     'yf_pid':        state.get('yf_pid'),
                     'compute_pid':   state.get('compute_pid'),
+                    'evals_pid':     state.get('evals_pid'),
                     'nse_universe':  read_status_file('nse_universe'),
                     'nse':           read_status_file('nse'),
                     'kite':          read_status_file('kite'),
                     'price':         read_status_file('price'),
                     'yf':            read_status_file('yf'),
                     'compute':       read_status_file('compute'),
+                    'evals':         read_status_file('evals'),
                 })
             return
 
