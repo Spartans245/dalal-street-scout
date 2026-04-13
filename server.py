@@ -11,7 +11,6 @@ Startup:
 
 Scheduler:
   - Every 5 min (9:15–3:30 IST Mon–Fri) : kite.ltp() prices + NIFTY + SENSEX
-  - 12:00 PM IST Mon–Fri : orchestrator --from kite (Kite scan + full compute: technicals + stages + scores)
   - 03:30 PM IST Mon–Fri : orchestrator full (NSE fundamentals + Kite scan + compute)
   - Sunday 01:00 AM IST  : full pipeline — NSE universe + fundamentals + Kite + YF + compute
   - File watcher: reloads stocks.json whenever compute.py updates it
@@ -57,12 +56,14 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
+import sqlite3
 
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 STATUS_DIR    = os.path.join(BASE_DIR, 'data', 'status')
 COMPUTED_FILE = os.path.join(BASE_DIR, 'data', 'computed', 'stocks.json')
 SIGNALS_FILE  = os.path.join(BASE_DIR, 'data', 'signals_log.json')
+DB_FILE       = os.path.join(BASE_DIR, 'data', 'dalal_street.db')
 PYTHON        = sys.executable
 PORT          = 5000
 LIVE_REFRESH  = 5 * 60   # seconds between price refreshes during market hours
@@ -89,6 +90,36 @@ def load_kite():
     return kite
 
 # ════════════════════════════════════════════════════════════════════
+# DB — tab-filtered stock queries
+# ════════════════════════════════════════════════════════════════════
+VALID_TABS = {'all', 'breakout', 'coiling', 'pre_cross', 'post_cross',
+              'pullback', 'trending', 'none'}
+
+def db_tickers_for_tab(tab):
+    """
+    Return a set of tickers for the given tab from the most recent trading_date
+    in eod_snapshots.  Returns None if DB unavailable or tab is 'all'.
+    """
+    if tab == 'all' or not os.path.exists(DB_FILE):
+        return None
+    try:
+        con = sqlite3.connect(f'file:{DB_FILE}?mode=ro', uri=True,
+                              check_same_thread=False)
+        cur = con.execute(
+            'SELECT ticker FROM eod_snapshots '
+            'WHERE trading_date=(SELECT MAX(trading_date) FROM eod_snapshots) '
+            'AND stage=?',
+            (tab,)
+        )
+        tickers = {row[0] for row in cur.fetchall()}
+        con.close()
+        return tickers
+    except Exception as e:
+        print(f'[DB] tab query error ({tab}): {e}')
+        return None
+
+
+# ════════════════════════════════════════════════════════════════════
 # STATE
 # ════════════════════════════════════════════════════════════════════
 state = {
@@ -99,6 +130,7 @@ state = {
     'market_mode':        'unknown',
     'count':              0,
     'file_mtime':         0.0,
+    'stage_counts':       {},
     'pipeline_pid':  None,   # orchestrator subprocess PID when running
     'indices':       {},     # {'NIFTY 50': {'price':..,'change':..}, 'SENSEX': {...}}
     'nse_pid':       None,   # nse_worker subprocess PID
@@ -184,6 +216,12 @@ def load_computed(force=False):
 
         indices = data.get('indices', {})
 
+        # Compute stage_counts from the (freshly classified) stocks list
+        stage_counts = {}
+        for s in stocks:
+            st = s.get('stage', 'none')
+            stage_counts[st] = stage_counts.get(st, 0) + 1
+
         with state_lock:
             state['stocks']             = stocks
             state['last_updated']       = saved_at
@@ -192,6 +230,7 @@ def load_computed(force=False):
             state['status']             = 'live' if mode == 'open' else 'eod'
             state['market_mode']        = mode
             state['file_mtime']         = mtime
+            state['stage_counts']       = stage_counts
             if indices:
                 state['indices']        = indices
 
@@ -205,6 +244,67 @@ def load_computed(force=False):
 
 # ════════════════════════════════════════════════════════════════════
 # STATUS FILE READER — for /api/ctrl
+# ════════════════════════════════════════════════════════════════════
+# EVALS — read signals from DB (replaces signals_log.json read)
+# ════════════════════════════════════════════════════════════════════
+_EVALS_JSON_FIELDS  = {'prev_stages', 'stage_history', 'retrigger_dates'}
+_EVALS_BOOL_FIELDS  = {'emaPreCross', 'emaCross', 'emaPullback',
+                       'volConfirm', 'priceCoiling', 'volShrinking'}
+
+def read_evals_from_db():
+    """Read all signals + daily prices from SQLite. Returns list of signal dicts."""
+    try:
+        con = sqlite3.connect(DB_FILE)
+        con.row_factory = sqlite3.Row
+
+        signals = [dict(r) for r in con.execute('SELECT * FROM evals_signals ORDER BY day0')]
+
+        price_rows = con.execute(
+            'SELECT signal_id, trading_date, price, nifty_price FROM evals_daily_prices'
+        ).fetchall()
+        con.close()
+    except Exception as e:
+        print(f'[SERVER] read_evals_from_db error: {e}')
+        return []
+
+    # Build prices + nifty_prices dicts keyed by signal_id
+    prices_map = {}
+    nifty_map  = {}
+    for row in price_rows:
+        sid = row['signal_id']
+        if sid not in prices_map:
+            prices_map[sid] = {}
+            nifty_map[sid]  = {}
+        if row['price'] is not None:
+            prices_map[sid][row['trading_date']] = row['price']
+        if row['nifty_price'] is not None:
+            nifty_map[sid][row['trading_date']]  = row['nifty_price']
+
+    result = []
+    for s in signals:
+        # Deserialize JSON-stored fields
+        for f in _EVALS_JSON_FIELDS:
+            val = s.get(f)
+            if val:
+                try:    s[f] = json.loads(val)
+                except: s[f] = []
+            else:
+                s[f] = []
+        # Convert SQLite integers back to booleans
+        for f in _EVALS_BOOL_FIELDS:
+            if s.get(f) is not None:
+                s[f] = bool(s[f])
+        # Drop daily_snapshots — large, not used by frontend
+        s.pop('daily_snapshots', None)
+        # Attach prices
+        sid = s.get('id', '')
+        s['prices']       = prices_map.get(sid, {})
+        s['nifty_prices'] = nifty_map.get(sid, {})
+        result.append(s)
+
+    return result
+
+
 # ════════════════════════════════════════════════════════════════════
 def read_status_file(name):
     path = os.path.join(STATUS_DIR, f'{name}.json')
@@ -395,17 +495,7 @@ def spawn_evals_worker(force=False):
             with state_lock:
                 state['evals_pid'] = None
             if proc.returncode == 0:
-                # Count signal-tier stocks from signals_log
-                try:
-                    sl_path = os.path.join(BASE_DIR, 'data', 'signals_log.json')
-                    with open(sl_path, encoding='utf-8') as f:
-                        sl = json.load(f)
-                    sig_count = sum(1 for s in sl.get('signals', []) if s.get('tier') == 'signal')
-                    open_count = sum(1 for s in sl.get('signals', []) if s.get('outcome') == 'OPEN')
-                    _write_evals_status('done', count=sig_count, duration=elapsed,
-                                        message=f'{sig_count} stockwise · {open_count} open signals')
-                except Exception:
-                    _write_evals_status('done', duration=elapsed)
+                # eval_worker writes its own status file — nothing to do here
                 print(f'[SERVER] eval_worker done ({elapsed}s)')
             else:
                 _write_evals_status('error', errors=1, duration=elapsed,
@@ -444,7 +534,6 @@ def scheduler():
     except Exception:
         _computed_today = False
     eod_done_today    = _computed_today
-    midday_done_today = _computed_today
     sunday_done_this_week = False  # Sunday 1 AM full scan
 
     while True:
@@ -461,28 +550,22 @@ def scheduler():
         if mode == 'open':
             eod_done_today = False
 
-            # 12:00 PM midday: full Kite scan + compute (technicals + stages)
-            if 12*60 <= mins < 12*60+30 and not midday_done_today:
-                print('[SCHEDULER] Midday: triggering Kite scan + compute...')
-                midday_done_today = True
-                spawn_orchestrator(['--from', 'kite'])
-            else:
-                # Price refresh every 5 min — skip if full scan already running
-                with state_lock:
-                    mtime = state['file_mtime']
-                    busy  = bool(state.get('pipeline_pid') or state.get('nse_pid') or state.get('compute_pid'))
-                if not busy:
-                    try:
-                        if time.time() - mtime > LIVE_REFRESH:
-                            spawn_price_refresh()
-                    except Exception:
-                        pass
+            # Price refresh every 5 min — skip if full scan already running
+            with state_lock:
+                mtime = state['file_mtime']
+                busy  = bool(state.get('pipeline_pid') or state.get('nse_pid') or state.get('compute_pid'))
+            if not busy:
+                try:
+                    if time.time() - mtime > LIVE_REFRESH:
+                        spawn_price_refresh()
+                except Exception:
+                    pass
 
         # ── EOD: owned by REFRESH_EOD.bat (Task Scheduler 3:50 PM) ──────
         # Server no longer triggers EOD — REFRESH_EOD.bat is the single owner.
         # Dual-trigger caused simultaneous orchestrator runs → server crash loop.
         elif mode == 'eod':
-            midday_done_today = False  # reset for tomorrow
+            pass  # nothing to reset
 
         # ── SUNDAY 1 AM: Full scan — NSE universe + fundamentals + Kite + YF + compute ──
         if day == 6 and 1*60 <= mins < 1*60+30 and not sunday_done_this_week:
@@ -646,6 +729,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/architecture.html':
             self.send_file('architecture.html', 'text/html; charset=utf-8')
             return
+        if path == '/architecture_db.html':
+            self.send_file('architecture_db.html', 'text/html; charset=utf-8')
+            return
         if path == '/metrics.html':
             self.send_file('metrics.html', 'text/html; charset=utf-8')
             return
@@ -670,16 +756,34 @@ class Handler(BaseHTTPRequestHandler):
 
         # ── Stocks ──────────────────────────────────────────────────
         if path == '/api/stocks':
+            qs  = parse_qs(urlparse(self.path).query)
+            tab = qs.get('tab', [None])[0]
+
             with state_lock:
-                data = {
+                base = {
                     'status':             state['status'],
                     'market_mode':        state['market_mode'],
                     'last_updated':       state['last_updated'],
                     'price_refreshed_at': state['price_refreshed_at'],
-                    'stocks':             list(state['stocks']),
                     'indices':            dict(state['indices']),
+                    'stage_counts':       dict(state['stage_counts']),
+                    'total_count':        state['count'],
                 }
-            self.send_json(data)
+                all_stocks = state['stocks']
+
+                if tab and tab in VALID_TABS and tab != 'all':
+                    # DB-powered: get tickers for this stage, filter in-memory list
+                    tickers = db_tickers_for_tab(tab)
+                    if tickers is not None:
+                        stocks = [s for s in all_stocks if s.get('ticker') in tickers]
+                    else:
+                        # DB unavailable — fall back to in-memory filter
+                        stocks = [s for s in all_stocks if s.get('stage') == tab]
+                    base['tab'] = tab
+                else:
+                    stocks = list(all_stocks)
+
+            self.send_json({**base, 'stocks': stocks})
             return
 
         # ── Prices (lightweight) ────────────────────────────────────
@@ -857,21 +961,11 @@ class Handler(BaseHTTPRequestHandler):
                     pass  # browser already closed connection
             return
 
-        # ── EVALS — signal performance log ──────────────────────────
+        # ── EVALS — signal performance log (reads from SQLite DB) ───
         if path == '/api/evals':
             try:
-                if os.path.exists(SIGNALS_FILE):
-                    with open(SIGNALS_FILE, encoding='utf-8') as f:
-                        data = json.load(f)
-                else:
-                    data = {'signals': []}
-                # Strip heavy analytics-only fields not used by the frontend
-                _STRIP = {'daily_snapshots', 'nifty_prices'}
-                data['signals'] = [
-                    {k: v for k, v in s.items() if k not in _STRIP}
-                    for s in data.get('signals', [])
-                ]
-                self.send_json(data)
+                signals = read_evals_from_db()
+                self.send_json({'signals': signals})
             except Exception as e:
                 self.send_json({'signals': [], 'error': str(e)})
             return

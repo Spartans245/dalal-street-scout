@@ -308,6 +308,10 @@ def run_pipeline(test=False, from_step=None, eod=False):
         if lc_code != 0:
             print(f'[ORCH] WARN: lifecycle_worker failed (exit {lc_code}) — non-fatal')
 
+        edb_code = run_worker('evals_db_writer.py', [], label='EVALS DB Writer')
+        if edb_code != 0:
+            print(f'[ORCH] WARN: evals_db_writer failed (exit {edb_code}) — EVALS not synced to DB')
+
     # ── Wait for YF, then patch D/E+ROE into stocks.json ─────────
     if yf_proc is not None:
         if yf_proc.poll() is None:
@@ -319,6 +323,12 @@ def run_pipeline(test=False, from_step=None, eod=False):
         else:
             print_status('yf', read_status('yf'))
             patch_yf_into_computed()   # triggers server file-watcher reload → UI refreshes
+
+    # ── Step A: Write EOD snapshot to DB (after YF patch so D/E+ROE are captured) ──
+    if eod and not test:
+        db_code = run_worker('db_writer.py', [], label='DB Writer')
+        if db_code != 0:
+            print(f'[ORCH] WARN: db_writer failed (exit {db_code}) — EOD snapshot not stored')
 
     # ── Summary ───────────────────────────────────────────────────
     elapsed = round(time.time() - t0, 1)

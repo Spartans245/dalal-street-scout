@@ -30,6 +30,22 @@ if hasattr(sys.stderr, 'reconfigure'):
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 COMPUTED_FILE = os.path.join(BASE_DIR, 'data', 'computed', 'stocks.json')
 SIGNALS_FILE  = os.path.join(BASE_DIR, 'data', 'signals_log.json')
+STATUS_FILE   = os.path.join(BASE_DIR, 'data', 'status', 'evals.json')
+
+def _write_status(status, count=None, errors=0, duration=None, message=''):
+    try:
+        obj = {
+            'status':   status,
+            'saved_at': datetime.datetime.now().isoformat(),
+            'count':    count,
+            'errors':   errors,
+            'duration': duration,
+            'message':  message,
+        }
+        with open(STATUS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(obj, f)
+    except Exception as e:
+        print(f'[EVAL] Could not write status: {e}')
 
 _ALL_STAGES        = {'post_cross', 'pre_cross', 'breakout', 'pullback', 'coiling', 'trending'}
 _ACTIONABLE_STAGES = _ALL_STAGES   # track all stages in EVALS
@@ -852,10 +868,14 @@ def run_eod():
     8. Recompute outcomes
     9. Save
     """
+    import time as _time
+    _t0 = _time.time()
     print('[EVAL] === EOD run starting ===')
+    _write_status('running', message='Starting...')
     stocks, nifty, trading_date = load_stocks()
     if not stocks:
         print('[EVAL] No stocks data — aborting')
+        _write_status('error', message='No stocks data')
         return
     # Use --date override if provided, otherwise use trading date from stocks.json saved_at.
     # --force only bypasses the guard — trading_date still comes from stocks.json.
@@ -885,7 +905,11 @@ def run_eod():
     win_count     = sum(1 for s in signals if s.get('outcome') == 'WIN')
     loss_count    = sum(1 for s in signals if s.get('outcome') == 'LOSS')
     expired_count = sum(1 for s in signals if s.get('outcome') == 'EXPIRED')
+    sig_count     = sum(1 for s in signals if s.get('tier') == 'signal')
+    elapsed       = round(_time.time() - _t0, 1)
     print(f'[EVAL] Done — total: {len(signals)} | open: {open_count} | WIN: {win_count} | LOSS: {loss_count} | EXPIRED: {expired_count}')
+    _write_status('done', count=sig_count, duration=elapsed,
+                  message=f'{sig_count} stockwise · {open_count} open signals')
 
 
 def run_price_refresh():

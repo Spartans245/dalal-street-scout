@@ -332,6 +332,7 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
   <div class="nav-section">
     <div style="padding:8px 16px 4px;font-size:9px;letter-spacing:1.2px;color:var(--muted2);text-transform:uppercase;font-family:var(--fm)">Technical</div>
     <div class="nav-item" id="nav-architecture" onclick="switchTab('architecture',this)">&#9671; Architecture</div>
+    <div class="nav-item" id="nav-architecture-db" onclick="switchTab('architecture-db',this)">&#9671; Architecture + DB</div>
   </div>
   <div class="nav-section">
     <div style="padding:8px 16px 4px;font-size:9px;letter-spacing:1.2px;color:var(--muted2);text-transform:uppercase;font-family:var(--fm)">Evals</div>
@@ -2854,6 +2855,10 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
   <iframe src="architecture.html" style="width:100%;height:calc(100vh - 60px);border:none;border-radius:4px" loading="lazy"></iframe>
 </div>
 
+<div class="panel" id="tab-architecture-db">
+  <iframe src="architecture_db.html" style="width:100%;height:calc(100vh - 60px);border:none;border-radius:4px" loading="lazy"></iframe>
+</div>
+
 <div class="panel" id="tab-metrics">
   <iframe src="metrics.html" style="width:100%;height:calc(100vh - 60px);border:none;border-radius:4px" loading="lazy"></iframe>
 </div>
@@ -3417,7 +3422,9 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
 const API = '/api';
 
 // ── STATE ────────────────────────────────────────────
-let allStocks  = [];
+let allStocks        = [];   // current tab's stocks (per-tab fetch target)
+let planStocks       = [];   // always full set — used by renderPlan + search + watchlist
+let serverStageCounts = {};  // stage counts from server — always reflects full universe
 let evSignals  = [];   // EVALS — must be declared before any function can reference it
 const _stageShort = {post_cross:'POST-X', pre_cross:'PRE-X', breakout:'BRK', pullback:'PULL', trending:'TREND', coiling:'COIL', none:'—'};
 const _stageColEv  = {post_cross:'var(--green)',pre_cross:'var(--gold)',breakout:'var(--blue)',pullback:'#c084fc',trending:'var(--muted)',coiling:'var(--muted)',none:'var(--muted)'};
@@ -3508,15 +3515,6 @@ function nextTickerRefresh(lastRunISO){
     d.setDate(d.getDate()+15);
     return d.toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
   }catch(e){return '—';}
-}
-function nextMidday(){
-  const now = new Date();
-  const ist = new Date(now.toLocaleString('en-US',{timeZone:'Asia/Kolkata'}));
-  const md  = new Date(ist);
-  md.setHours(12,0,0,0);
-  if(ist >= md) md.setDate(md.getDate()+1);
-  while([0,6].includes(md.getDay())) md.setDate(md.getDate()+1);
-  return md.toLocaleString('en-IN',{weekday:'short',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true});
 }
 function nextSundayYF(){
   const now = new Date();
@@ -3661,7 +3659,7 @@ async function renderCtrl(){
       </div>
     </div>
     <div class="ctrl-schedule" style="margin-top:8px">
-      <span>⏱ Auto-runs Sunday 1:00 AM IST · also at EOD 3:30 PM IST Mon–Fri (NSE + Kite only, no YF) · EVALS auto-runs after every pipeline</span>
+      <span>⏱ Auto-runs Sunday 1:00 AM IST · also at EOD 3:30 PM IST Mon–Fri (NSE + Kite only, no YF) · EVALS auto-runs after every pipeline · no midday scan</span>
       <span>Next Sunday: ${nextSundayYF()}</span>
     </div>
   </div>
@@ -3717,8 +3715,7 @@ async function renderCtrl(){
       <div class="ctrl-row"><span class="ctrl-lbl">Tickers failed</span><span class="ctrl-val">${errVal(kite.errors)}</span></div>
       <div class="ctrl-row"><span class="ctrl-lbl">Time spent</span><span class="ctrl-val">${fmtElapsed(kite.duration)}</span></div>
       <div class="ctrl-schedule">
-        <span>⏱ Auto: 12:00 PM IST · Mon–Fri · EOD full pipeline also re-runs Kite</span>
-        <span>Next: ${nextMidday()}</span>
+        <span>⏱ Re-runs as part of EOD full pipeline (3:30 PM IST Mon–Fri)</span>
       </div>
     </div>
 
@@ -4102,6 +4099,17 @@ async function pollStatus(){
   }
 }
 
+// Fetch a single stage tab from the DB-powered endpoint and re-render scanner
+async function fetchTab(stage){
+  try {
+    const r = await fetch(`${API}/stocks?tab=${encodeURIComponent(stage)}`);
+    const d = await r.json();
+    if(!d.stocks) return;
+    allStocks = d.stocks;
+    renderStages();
+  } catch(e){ console.error('fetchTab error:', e); }
+}
+
 async function loadStocks(statusData){
   try {
     const r = await fetch(`${API}/stocks`);
@@ -4110,10 +4118,12 @@ async function loadStocks(statusData){
 
     if(allStocks.length>0) prevStocks=JSON.parse(JSON.stringify(allStocks));
     allStocks = d.stocks;
+    planStocks = d.stocks;   // keep full set for plan view + search
+    if(d.stage_counts) serverStageCounts = d.stage_counts;
 
     // If modal is open, refresh the R:R analysis with updated price
     if(openDetailTicker){
-      const _s = allStocks.find(x=>x.ticker===openDetailTicker);
+      const _s = planStocks.find(x=>x.ticker===openDetailTicker);
       if(_s){
         const _el = document.getElementById('srAnalysis');
         if(_el) _el.outerHTML = calcSrAnalysis(_s)||'';
@@ -4135,14 +4145,14 @@ async function loadStocks(statusData){
       if(el) el.classList.toggle('active', s===activeMcap);
     });
 
-    // Attach prevScore
-    allStocks.forEach(s=>{
+    // Attach prevScore (on full set)
+    planStocks.forEach(s=>{
       const p=prevStocks.find(x=>x.ticker===s.ticker);
       s.prevScore=p?p.score:null;
     });
 
-    // Sector filter
-    const sectors=[...new Set(allStocks.map(s=>s.sector))].sort();
+    // Sector filter — always populate from full universe
+    const sectors=[...new Set(planStocks.map(s=>s.sector))].sort();
     const sf=document.getElementById('sectorFilter');
     sf.innerHTML='<option value="all">All Sectors</option>'+sectors.map(s=>`<option>${s}</option>`).join('');
     document.getElementById('scanTime').textContent=d.last_updated;
@@ -4255,8 +4265,10 @@ function renderPlan(){
     })();
     return (s.fScore||0) + t + sig;
   };
-  const strong=[...allStocks].filter(s=>_tileScore(s)>=49&&s.stage!=='none').sort((a,b)=>_tileScore(b)-_tileScore(a));
-  const watch=allStocks.filter(s=>{const sc=_tileScore(s);return sc>=34&&sc<49;}).length;
+  // Plan view always uses the full universe — planStocks is set on every full load
+  const _ps = planStocks.length ? planStocks : allStocks;
+  const strong=[..._ps].filter(s=>_tileScore(s)>=49&&s.stage!=='none').sort((a,b)=>_tileScore(b)-_tileScore(a));
+  const watch=_ps.filter(s=>{const sc=_tileScore(s);return sc>=34&&sc<49;}).length;
   const mode=mktMode();
   document.getElementById('planStats').innerHTML=`
 <div class="scard green" onclick="navToScore('strong')" style="padding:7px 10px;min-width:0;cursor:pointer;transition:background 0.15s" onmouseenter="this.style.background='var(--s2)'" onmouseleave="this.style.background=''">
@@ -4271,7 +4283,7 @@ function renderPlan(){
     </div>
     <div class="scard blue" onclick="navToScore('range')" style="padding:7px 10px;min-width:0;cursor:pointer;transition:background 0.15s" onmouseenter="this.style.background='var(--s2)'" onmouseleave="this.style.background=''">
       <div class="sl">In Range</div>
-      <div class="sv">${allStocks.length}</div>
+      <div class="sv">${_ps.length}</div>
       <div class="ss">All NSE stocks loaded</div>
     </div>
   `;
@@ -4291,8 +4303,8 @@ function renderPlan(){
 
   const pipeData = pipeStages.map(st => ({
     ...st,
-    count: st.key==='_all' ? allStocks.length : allStocks.filter(s=>s.stage===st.key).length,
-    top: st.key==='_all' ? [] : [...allStocks].filter(s=>s.stage===st.key)
+    count: st.key==='_all' ? _ps.length : _ps.filter(s=>s.stage===st.key).length,
+    top: st.key==='_all' ? [] : [..._ps].filter(s=>s.stage===st.key)
       .map(s=>({...s,_ps:calcPipeScore(s)}))
       .sort((a,b)=>{
         const d=b._ps-a._ps;
@@ -4319,7 +4331,7 @@ function renderPlan(){
   ).join('');
   const stageHeaders = pipeStages.map(st => {
     const mid = st.x + st.w/2;
-    const cnt = st.key==='_all' ? allStocks.length : allStocks.filter(s=>s.stage===st.key).length;
+    const cnt = st.key==='_all' ? _ps.length : _ps.filter(s=>s.stage===st.key).length;
     return `<text x="${mid}" y="11" text-anchor="middle" fill="${st.color}" font-family="${MF}" font-size="8.5" font-weight="700" letter-spacing="0.5">${st.label}</text>`
          + `<rect x="${mid-18}" y="14" width="36" height="9" rx="2" fill="${st.color}" fill-opacity="0.15"/>`
          + `<text x="${mid}" y="21" text-anchor="middle" fill="${st.color}" font-family="${MF}" font-size="7" font-weight="600">${cnt}</text>`;
@@ -4466,7 +4478,16 @@ function renderPlan(){
 }
 
 // ── STAGE VIEW ───────────────────────────────────────
-function setStage(stage){ phaseMode = false; activeStage = stage; sortState = {col:'score', asc:false}; renderStages(); }
+function setStage(stage){
+  phaseMode = false; activeStage = stage; sortState = {col:'score', asc:false};
+  if(stage === 'all'){
+    // Restore full set from plan cache (no network fetch needed)
+    if(planStocks.length) allStocks = planStocks;
+    renderStages();
+  } else {
+    fetchTab(stage);   // small per-tab fetch → re-renders when done
+  }
+}
 
 function renderStages(){
   const stages = ['all','post_cross','pre_cross','breakout','coiling','pullback','trending'];
@@ -4569,8 +4590,19 @@ function renderStages(){
 
   // No pre-sort — final sort on recomputed scores handles all ordering
 
+  // Local counts (from currently loaded allStocks — may be a single tab's subset)
+  const localCounts = {};
+  stages.forEach(st => localCounts[st] = st === 'all' ? stocks.length : stocks.filter(x => x.stage === st).length);
+
+  // Tab badge counts: prefer serverStageCounts (full universe) so badges are always correct
+  const hasSC = Object.keys(serverStageCounts).length > 0;
   const counts = {};
-  stages.forEach(st => counts[st] = st === 'all' ? stocks.length : stocks.filter(x => x.stage === st).length);
+  stages.forEach(st => {
+    if(st === 'all') counts[st] = hasSC
+      ? Object.values(serverStageCounts).reduce((a,b)=>a+b,0)
+      : localCounts[st];
+    else counts[st] = hasSC ? (serverStageCounts[st]||0) : localCounts[st];
+  });
 
   document.getElementById('resCount').textContent = stocks.length;
   document.getElementById('passCount').innerHTML =
@@ -4770,11 +4802,12 @@ function renderCompare(){
   if(!prevStocks.length){document.getElementById('cmpEmpty').style.display='block';document.getElementById('cmpContent').style.display='none';document.getElementById('chgBadge').style.display='none';return;}
   document.getElementById('cmpEmpty').style.display='none';document.getElementById('cmpContent').style.display='block';
   const pS=new Set(prevStocks.filter(s=>s.score>=33).map(s=>s.ticker));
-  const cS=new Set(allStocks.filter(s=>s.score>=33).map(s=>s.ticker));
-  const newE=allStocks.filter(s=>cS.has(s.ticker)&&!pS.has(s.ticker));
+  const _cmpSrc = planStocks.length ? planStocks : allStocks;
+  const cS=new Set(_cmpSrc.filter(s=>s.score>=33).map(s=>s.ticker));
+  const newE=_cmpSrc.filter(s=>cS.has(s.ticker)&&!pS.has(s.ticker));
   const dropO=prevStocks.filter(s=>pS.has(s.ticker)&&!cS.has(s.ticker));
-  const imp=allStocks.filter(s=>{const p=prevStocks.find(x=>x.ticker===s.ticker);return p&&s.score-p.score>=3;});
-  const drp=allStocks.filter(s=>{const p=prevStocks.find(x=>x.ticker===s.ticker);return p&&p.score-s.score>=3;});
+  const imp=_cmpSrc.filter(s=>{const p=prevStocks.find(x=>x.ticker===s.ticker);return p&&s.score-p.score>=3;});
+  const drp=_cmpSrc.filter(s=>{const p=prevStocks.find(x=>x.ticker===s.ticker);return p&&p.score-s.score>=3;});
   const tot=newE.length+dropO.length+imp.length+drp.length;
   const b=document.getElementById('chgBadge');b.textContent=tot;b.style.display=tot?'inline-block':'none';
   document.getElementById('cmpStats').innerHTML=`
@@ -4787,7 +4820,7 @@ function renderCompare(){
   document.getElementById('newBody').innerHTML=newE.length?newE.map(s=>`<tr onclick="openDetail('${s.ticker}')" style="cursor:pointer"><td><div class="tn">${s.ticker}</div><div class="ts">${s.sector}</div></td><td><div class="sbadge sh">${s.score}</div></td><td class="mono up">₹${s.price.toLocaleString('en-IN')}</td><td><span class="tag tg">Entered 33+</span></td></tr>`).join(''):em;
   document.getElementById('impBody').innerHTML=imp.length?imp.map(s=>{const p=prevStocks.find(x=>x.ticker===s.ticker);return`<tr onclick="openDetail('${s.ticker}')" style="cursor:pointer"><td><div class="tn">${s.ticker}</div><div class="ts">${s.sector}</div></td><td class="mono" style="color:var(--muted)">${p.score}</td><td><div class="sbadge ${s.score>=33?'sh':'sm'}">${s.score}</div></td><td><span class="dup">▲+${s.score-p.score}</span></td><td class="mono">₹${s.price.toLocaleString('en-IN')}</td></tr>`;}).join(''):em;
   document.getElementById('dropBody').innerHTML=drp.length?drp.map(s=>{const p=prevStocks.find(x=>x.ticker===s.ticker);return`<tr onclick="openDetail('${s.ticker}')" style="cursor:pointer"><td><div class="tn">${s.ticker}</div><div class="ts">${s.sector}</div></td><td class="mono" style="color:var(--muted)">${p.score}</td><td><div class="sbadge ${s.score>=33?'sh':s.score>=23?'sm':'sl2'}">${s.score}</div></td><td><span class="ddn">▼${s.score-p.score}</span></td><td class="mono">₹${s.price.toLocaleString('en-IN')}</td></tr>`;}).join(''):em;
-  document.getElementById('outBody').innerHTML=dropO.length?dropO.map(s=>{const c=allStocks.find(x=>x.ticker===s.ticker);return`<tr><td><div class="tn">${s.ticker}</div><div class="ts">${s.sector}</div></td><td class="mono" style="color:var(--muted)">${s.score}</td><td class="mono" style="color:var(--red)">${c?c.score:'—'}</td></tr>`;}).join(''):em;
+  document.getElementById('outBody').innerHTML=dropO.length?dropO.map(s=>{const c=_cmpSrc.find(x=>x.ticker===s.ticker);return`<tr><td><div class="tn">${s.ticker}</div><div class="ts">${s.sector}</div></td><td class="mono" style="color:var(--muted)">${s.score}</td><td class="mono" style="color:var(--red)">${c?c.score:'—'}</td></tr>`;}).join(''):em;
 }
 
 // ── S/R RISK·REWARD ANALYSIS ──────────────────────────
@@ -4951,7 +4984,7 @@ async function showSrAnalysis(ticker){
     const rBd = data.rr>=2?'rgba(10,102,64,0.25)':data.rr>=1.5?'rgba(245,158,11,0.25)':'rgba(192,21,42,0.25)';
 
     // Recompute display numbers from the stock object for the tiles
-    const s = allStocks.find(x=>x.ticker===ticker)||{};
+    const s = (planStocks.length?planStocks:allStocks).find(x=>x.ticker===ticker)||{};
     const p = s.price||0;
     const supW9 = (s.srSupport||[]).filter(r=>{const pc=(p-r.price)/p*100;return pc>0&&pc<=9;}).sort((a,b)=>b.price-a.price);
     const effStop = supW9.length ? +(supW9[0].price*0.995).toFixed(2) : +(p*0.91).toFixed(2);
@@ -5064,9 +5097,10 @@ function openStageModal(key){
     if(bu!==au) return bu-au;
     return (b.mcap||0)-(a.mcap||0);
   };
+  const _planSrc = planStocks.length ? planStocks : allStocks;
   const stocks = key==='_all'
-    ? [...allStocks].sort(_stk_sort)
-    : [...allStocks].filter(s=>s.stage===key).sort(_stk_sort);
+    ? [..._planSrc].sort(_stk_sort)
+    : [..._planSrc].filter(s=>s.stage===key).sort(_stk_sort);
 
   document.getElementById('mTitle').innerHTML =
     `<span style="color:${m.color}">${m.label}</span> <span style="font-size:12px;color:var(--muted);font-weight:400">${stocks.length} stocks</span>`;
@@ -5110,7 +5144,7 @@ function openStageModal(key){
   _openMov('mov');
 }
 function openDetail(ticker){
-  const s=allStocks.find(x=>x.ticker===ticker);if(!s)return;
+  const s=(planStocks.length?planStocks:allStocks).find(x=>x.ticker===ticker);if(!s)return;
   openDetailTicker = ticker;
   const prev=prevStocks.find(p=>p.ticker===ticker);
   const _t   = rsiScore(s.rsi) + adxScore(s.adx);
@@ -5252,8 +5286,9 @@ function openDetail(ticker){
 function filterWLInput(){
   const val = document.getElementById('wlIn').value.trim().toUpperCase();
   const dd  = document.getElementById('wlDropdown');
-  if(!val || !allStocks.length){ dd.style.display='none'; return; }
-  const matches = allStocks.filter(s => s.ticker.startsWith(val) || s.ticker.includes(val)).slice(0, 10);
+  const _searchSrc = planStocks.length ? planStocks : allStocks;
+  if(!val || !_searchSrc.length){ dd.style.display='none'; return; }
+  const matches = _searchSrc.filter(s => s.ticker.startsWith(val) || s.ticker.includes(val)).slice(0, 10);
   if(!matches.length){ dd.style.display='none'; return; }
   dd.style.display = 'block';
   dd.innerHTML = matches.map(s => {
@@ -5287,7 +5322,7 @@ function rmWL(t){watchlist=watchlist.filter(x=>x!==t);localStorage.setItem('dss4
 
 // ── NEWS ──────────────────────────────────────────────
 function generateNews(){
-  const top=allStocks.filter(s=>s.score>=33).sort((a,b)=>b.score-a.score).slice(0,20);
+  const top=(planStocks.length?planStocks:allStocks).filter(s=>s.score>=33).sort((a,b)=>b.score-a.score).slice(0,20);
   function rand(a,b){return Math.random()*(b-a)+a;}
   function randInt(a,b){return Math.floor(rand(a,b));}
   function pick(arr){return arr[Math.floor(Math.random()*arr.length)];}
@@ -5318,7 +5353,7 @@ function switchTab(name,el){
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('tab-'+name).classList.add('active');
-  if(name==='scanner'){ phaseMode = false; activeStage = 'all'; sortState = {col:'score', asc:false}; renderStages(); }
+  if(name==='scanner'){ phaseMode = false; activeStage = 'all'; sortState = {col:'score', asc:false}; if(planStocks.length) allStocks = planStocks; renderStages(); }
   if(name==='plan'){ if(scoreViewType){ scoreViewType=null; document.getElementById('scoreContent').style.display='none'; document.getElementById('scoreContent').innerHTML=''; } if(stageViewKey){ stageViewKey=null; document.getElementById('stageContent').style.display='none'; document.getElementById('stageContent').innerHTML=''; } renderPlan(); }
   if(name==='ctrl') startCtrlPoll();
   else stopCtrlPoll();
@@ -5348,7 +5383,12 @@ function navToStage(stage){
   document.getElementById('nav-scanner')?.classList.add('active');
   document.getElementById('tab-scanner').classList.add('active');
   sortState = {col:'score', asc:false};
-  renderStages();
+  if(stage === 'all'){
+    if(planStocks.length) allStocks = planStocks;
+    renderStages();
+  } else {
+    fetchTab(stage);
+  }
 }
 
 let scoreViewType = null;
@@ -5417,7 +5457,8 @@ function renderStageView(){
   const m = meta[key] || {label:key.toUpperCase(), color:'var(--muted2)', sub:''};
 
   // Apply own filters
-  let base = key==='_all' ? [...allStocks] : [...allStocks].filter(s=>s.stage===key);
+  const _svSrc = planStocks.length ? planStocks : allStocks;
+  let base = key==='_all' ? [..._svSrc] : [..._svSrc].filter(s=>s.stage===key);
   if(stgMcap==='micro') base=base.filter(s=>(s.mcap||0)<500);
   else if(stgMcap==='small') base=base.filter(s=>(s.mcap||0)>=500&&(s.mcap||0)<5000);
   else if(stgMcap==='mid')   base=base.filter(s=>(s.mcap||0)>=5000&&(s.mcap||0)<=20000);
@@ -5448,7 +5489,7 @@ function renderStageView(){
     return (b.mcap||0) - (a.mcap||0);
   });
 
-  const allSectors = ['all', ...new Set(allStocks.map(s=>s.sector).filter(Boolean).sort())];
+  const allSectors = ['all', ...new Set(_svSrc.map(s=>s.sector).filter(Boolean).sort())];
   const sectorOpts = allSectors.map(s=>`<option value="${s}"${s===stgSector?'selected':''}>${s==='all'?'All Sectors':s}</option>`).join('');
 
   const stageLabelMap = {post_cross:'POST×',pre_cross:'PRE×',breakout:'BRK',coiling:'COIL',pullback:'PULL',trending:'TREND',none:'—'};
@@ -5572,11 +5613,12 @@ function setStatLiq(v){ statLiq=v; renderScoreView(); }
 function setStatSector(v){ statSector=v; renderScoreView(); }
 function setStatMcap(v){ statMcap=v; renderScoreView(); }
 function scoreViewStocks(){
-  if(statMcap==='micro') return allStocks.filter(s=>(s.mcap||0)<500);
-  if(statMcap==='small') return allStocks.filter(s=>(s.mcap||0)>=500&&(s.mcap||0)<5000);
-  if(statMcap==='mid')   return allStocks.filter(s=>(s.mcap||0)>=5000&&(s.mcap||0)<=20000);
-  if(statMcap==='large') return allStocks.filter(s=>(s.mcap||0)>20000);
-  return allStocks;
+  const _src = planStocks.length ? planStocks : allStocks;
+  if(statMcap==='micro') return _src.filter(s=>(s.mcap||0)<500);
+  if(statMcap==='small') return _src.filter(s=>(s.mcap||0)>=500&&(s.mcap||0)<5000);
+  if(statMcap==='mid')   return _src.filter(s=>(s.mcap||0)>=5000&&(s.mcap||0)<=20000);
+  if(statMcap==='large') return _src.filter(s=>(s.mcap||0)>20000);
+  return _src;
 }
 
 function renderScoreView(){
@@ -5847,9 +5889,10 @@ function toggleRule(key, enabled) {
 }
 
 function updateStratComparison() {
-  if (!allStocks.length) return;
-  const origStrong = allStocks.filter(s => s.score >= 33).length;
-  const newScores  = allStocks.map(s => ({ ...s, newScore: calcStratScore(s) }));
+  const _stratSrc = planStocks.length ? planStocks : allStocks;
+  if (!_stratSrc.length) return;
+  const origStrong = _stratSrc.filter(s => s.score >= 33).length;
+  const newScores  = _stratSrc.map(s => ({ ...s, newScore: calcStratScore(s) }));
   const newStrong  = newScores.filter(s => s.newScore >= 70).length;
   const gained     = newScores.filter(s => s.score < 33 && s.newScore >= 33).length;
   const lost       = newScores.filter(s => s.score >= 33 && s.newScore < 33).length;
@@ -5898,7 +5941,7 @@ function updateStratComparison() {
 let currentWLStock = null;
 
 function openWLDetail(ticker) {
-  const s = allStocks.find(x => x.ticker === ticker);
+  const s = (planStocks.length?planStocks:allStocks).find(x => x.ticker === ticker);
   if (!s) return;
   currentWLStock = s;
 
@@ -6105,11 +6148,12 @@ const _origRenderTable = renderTable;
 function renderSectorPe(){
   const el = document.getElementById('sectorPeContent');
   if(!el) return;
-  if(!allStocks.length){ el.innerHTML='<div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">No scan data loaded yet</div>'; return; }
+  const _spe = planStocks.length ? planStocks : allStocks;
+  if(!_spe.length){ el.innerHTML='<div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">No scan data loaded yet</div>'; return; }
 
   // Group by sector, collect stocks and PE values
   const sectorMap = {};
-  allStocks.forEach(s => {
+  _spe.forEach(s => {
     const sec = s.sector || 'Unknown';
     if(!sectorMap[sec]) sectorMap[sec] = { pes: [], stocks: 0 };
     sectorMap[sec].stocks++;
@@ -6241,9 +6285,10 @@ function renderWL(){
       : s.vpbScore>0 ? s.vpbScore : 0;
     return {score:(s.fScore||0)+ra+sig, tScore:ra, sigScore:sig};
   };
+  const _wlSrc = planStocks.length ? planStocks : allStocks;
   const sortedWl = [...watchlist].sort((a, b) => {
-    const sa = allStocks.find(x=>x.ticker===a);
-    const sb = allStocks.find(x=>x.ticker===b);
+    const sa = _wlSrc.find(x=>x.ticker===a);
+    const sb = _wlSrc.find(x=>x.ticker===b);
     if(!sa && !sb) return 0;
     if(!sa) return 1;
     if(!sb) return -1;
@@ -6262,7 +6307,7 @@ function renderWL(){
   const stageLabelMap = {post_cross:'POST×',pre_cross:'PRE×',breakout:'BRK',coiling:'COIL',pullback:'PULL',trending:'TREND',none:'—'};
   const stageColorMap = {post_cross:'var(--green)',pre_cross:'#006651',breakout:'var(--gold)',coiling:'var(--muted)',pullback:'#1547c0',trending:'#5a32b0',none:'var(--muted)'};
   b.innerHTML = sortedWl.map(t => {
-    const s = allStocks.find(x => x.ticker === t);
+    const s = _wlSrc.find(x => x.ticker === t);
     if(!s) return `<tr>
       <td><div class="tn">${t}</div><div class="ts">Not in scan range yet</div></td>
       <td colspan="13" style="color:var(--muted);font-family:var(--fm);font-size:11px">Will appear once server scans &amp; finds it in ₹100–10,000 Cr range</td>
