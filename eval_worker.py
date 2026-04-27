@@ -27,10 +27,35 @@ if hasattr(sys.stdout, 'reconfigure'):
 if hasattr(sys.stderr, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
+import sqlite3
+
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
-COMPUTED_FILE = os.path.join(BASE_DIR, 'data', 'computed', 'stocks.json')
+COMPUTED_FILE = os.path.join(BASE_DIR, 'data', 'computed', 'stocks.json')  # fallback only
+DB_FILE       = os.path.join(BASE_DIR, 'data', 'dalal_street.db')
 SIGNALS_FILE  = os.path.join(BASE_DIR, 'data', 'signals_log.json')
 STATUS_FILE   = os.path.join(BASE_DIR, 'data', 'status', 'evals.json')
+
+_DB_JSON_FIELDS = {'catalysts', 'srResistance', 'srSupport', 'prevStages'}
+_DB_BOOL_FIELDS = {
+    'near52High', 'macd', 'emaCross', 'emaTrend', 'volConfirm', 'emaPreCross',
+    'emaPostCross', 'emaPullback', 'golden', 'priceCoiling', 'volShrinking',
+    'ema14Rising', 'ema14RisingFast', 'near38High', 'mmConditional',
+}
+
+def _db_row_to_dict(cur, row):
+    cols = [d[0] for d in cur.description]
+    d = {}
+    for col, val in zip(cols, row):
+        if col in _DB_JSON_FIELDS:
+            try:
+                d[col] = json.loads(val) if val else []
+            except Exception:
+                d[col] = []
+        elif col in _DB_BOOL_FIELDS:
+            d[col] = bool(val) if val is not None else False
+        else:
+            d[col] = val
+    return d
 
 def _write_status(status, count=None, errors=0, duration=None, message=''):
     try:
@@ -110,19 +135,62 @@ def is_trading_day(date_str):
     return date_str not in holidays
 
 def load_stocks():
-    """Read stocks.json — returns (stocks_list, nifty_price, trading_date).
-    trading_date is the date of the kite scan (from last_updated or price_refreshed_at),
-    NOT the system clock — ensures prices are keyed to the correct trading day."""
+    """Read stocks from stocks_live DB view — returns (stocks_list, nifty_price, trading_date).
+    trading_date comes from the DB (MAX trading_date in stocks_master).
+    Falls back to stocks.json if DB unavailable.
+    """
+    # ── Primary: read from DB ────────────────────────────────────────
+    if os.path.exists(DB_FILE):
+        try:
+            con = sqlite3.connect(f'file:{DB_FILE}?mode=ro', uri=True,
+                                  check_same_thread=False)
+            # Get trading date
+            cur = con.execute('SELECT MAX(trading_date) FROM stocks_master')
+            trading_date = (cur.fetchone() or [None])[0]
+
+            # Get all stocks from latest date
+            cur = con.execute('SELECT * FROM stocks_live')
+            stocks = [_db_row_to_dict(cur, row) for row in cur.fetchall()]
+
+            # Get NIFTY from nifty_eod table for this trading date
+            nifty = 0.0
+            if trading_date:
+                cur = con.execute(
+                    'SELECT close FROM nifty_eod WHERE trading_date=?', (trading_date,))
+                row = cur.fetchone()
+                nifty = float(row[0]) if row else 0.0
+
+            con.close()
+
+            if not nifty:
+                # Fallback: nifty_close.json written by kite_worker
+                nifty_file = os.path.join(BASE_DIR, 'data', 'evals', 'nifty_close.json')
+                if os.path.exists(nifty_file):
+                    try:
+                        with open(nifty_file, encoding='utf-8') as nf:
+                            nd = json.load(nf)
+                        if nd.get('date') == trading_date:
+                            nifty = float(nd.get('close', 0) or 0)
+                    except Exception:
+                        pass
+
+            if not trading_date:
+                trading_date = today_str()
+
+            print(f'[EVAL] Loaded {len(stocks)} stocks from DB (trading_date={trading_date})')
+            return stocks, nifty, trading_date
+
+        except Exception as e:
+            print(f'[EVAL] DB read error, falling back to stocks.json: {e}')
+
+    # ── Fallback: stocks.json ────────────────────────────────────────
     try:
         with open(COMPUTED_FILE, encoding='utf-8') as f:
             raw = f.read()
-        # Sanitize NaN/Infinity and use raw_decode to handle any trailing bytes
         raw = raw.replace('Infinity', 'null').replace('NaN', 'null').replace('-null', 'null')
         data, _ = json.JSONDecoder().raw_decode(raw)
         stocks = data.get('stocks', [])
         nifty  = data.get('indices', {}).get('NIFTY 50', {}).get('price', 0) or 0
-        # Trading date: from price_refreshed_at or last_updated in stocks.json
-        # This is the date of the actual market data, not the system clock.
         trading_date = None
         for key in ('price_refreshed_at', 'last_updated', 'saved_at'):
             ts = data.get(key, '')
@@ -130,18 +198,8 @@ def load_stocks():
                 trading_date = ts[:10]
                 break
         if not trading_date:
-            trading_date = today_str()  # fallback to system date if not found
-        # Fallback: read NIFTY close written by kite_worker during EOD
-        if not nifty:
-            nifty_file = os.path.join(BASE_DIR, 'data', 'evals', 'nifty_close.json')
-            if os.path.exists(nifty_file):
-                try:
-                    with open(nifty_file, encoding='utf-8') as nf:
-                        nd = json.load(nf)
-                    if nd.get('date') == trading_date:
-                        nifty = nd.get('close', 0) or 0
-                except Exception:
-                    pass
+            trading_date = today_str()
+        print(f'[EVAL] Loaded {len(stocks)} stocks from stocks.json (fallback)')
         return stocks, nifty, trading_date
     except Exception as e:
         print(f'[EVAL] Cannot read stocks.json: {e}')
