@@ -98,7 +98,7 @@ VALID_TABS = {'all', 'breakout', 'coiling', 'pre_cross', 'post_cross',
 def db_tickers_for_tab(tab):
     """
     Return a set of tickers for the given tab from the most recent trading_date
-    in eod_snapshots.  Returns None if DB unavailable or tab is 'all'.
+    in stocks_master.  Returns None if DB unavailable or tab is 'all'.
     """
     if tab == 'all' or not os.path.exists(DB_FILE):
         return None
@@ -106,8 +106,8 @@ def db_tickers_for_tab(tab):
         con = sqlite3.connect(f'file:{DB_FILE}?mode=ro', uri=True,
                               check_same_thread=False)
         cur = con.execute(
-            'SELECT ticker FROM eod_snapshots '
-            'WHERE trading_date=(SELECT MAX(trading_date) FROM eod_snapshots) '
+            'SELECT ticker FROM stocks_master '
+            'WHERE trading_date=(SELECT MAX(trading_date) FROM stocks_master) '
             'AND stage=?',
             (tab,)
         )
@@ -462,8 +462,16 @@ def spawn_compute():
         proc.wait()
         with state_lock: state['compute_pid'] = None
         if proc.returncode == 0:
-            load_computed(force=True)
+            load_computed()
             print('[SERVER] Compute done — stocks reloaded')
+            db_cmd = [PYTHON, '-W', 'ignore', os.path.join(BASE_DIR, 'db_writer.py')]
+            db_proc = subprocess.Popen(db_cmd, cwd=BASE_DIR,
+                creationflags=subprocess.BELOW_NORMAL_PRIORITY_CLASS)
+            db_proc.wait()
+            if db_proc.returncode == 0:
+                print('[SERVER] db_writer done — stocks_master updated')
+            else:
+                print(f'[SERVER] WARN: db_writer exited {db_proc.returncode}')
     threading.Thread(target=_run, daemon=True).start()
     return True
 
