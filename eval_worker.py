@@ -206,8 +206,84 @@ def load_stocks():
         print(f'[EVAL] Cannot read stocks.json: {e}')
         return [], 0, today_str()
 
+_SIGNAL_JSON_FIELDS = {'prev_stages', 'stage_history', 'retrigger_dates', 'daily_snapshots'}
+_SIGNAL_BOOL_FIELDS = {'emaPreCross', 'emaCross', 'emaPullback', 'volConfirm',
+                       'priceCoiling', 'volShrinking'}
+_SIGNAL_COLUMNS = [
+    'ticker', 'name', 'sector', 'day0', 'tier', 'tier_date', 'stage',
+    'score', 'fScore', 'tScore', 'sigScore', 'rsi', 'adx', 'pe', 'mcap',
+    'board', 'vpbScore', 'vpbDetail', 'crossScore',
+    'emaPreCross', 'emaCross', 'emaPullback', 'volConfirm',
+    'priceCoiling', 'volShrinking', 'deFlag', 'roeFlag',
+    'price_d0', 'nifty_d0', 'source', 'outcome', 'outcome_day',
+    'outcome_price', 'outcome_ret', 'prev_stages', 'stage_history',
+    'retrigger_dates', 'daily_snapshots',
+]
+
+def _coerce_signal(field, value):
+    if value is None:
+        return None
+    if field in _SIGNAL_BOOL_FIELDS:
+        return 1 if value else 0
+    if field in _SIGNAL_JSON_FIELDS:
+        return json.dumps(value, separators=(',', ':'))
+    return value
+
+def _signal_row_to_dict(cur, row):
+    cols = [d[0] for d in cur.description]
+    d = {}
+    for col, val in zip(cols, row):
+        if col in _SIGNAL_JSON_FIELDS:
+            try: d[col] = json.loads(val) if val else ([] if col != 'prev_stages' else {})
+            except: d[col] = [] if col != 'prev_stages' else {}
+        elif col in _SIGNAL_BOOL_FIELDS:
+            d[col] = bool(val) if val is not None else False
+        else:
+            d[col] = val
+    return d
+
 def load_signals():
-    """Read signals_log.json — returns list of signal dicts."""
+    """Read signals from evals_signals + evals_daily_prices DB tables.
+    Falls back to signals_log.json if DB unavailable.
+    """
+    if os.path.exists(DB_FILE):
+        try:
+            con = sqlite3.connect(DB_FILE)
+            con.execute('PRAGMA journal_mode=WAL')
+
+            cur = con.execute('SELECT * FROM evals_signals ORDER BY day0')
+            signals = [_signal_row_to_dict(cur, row) for row in cur.fetchall()]
+
+            # Attach prices + nifty_prices from evals_daily_prices
+            price_rows = con.execute(
+                'SELECT signal_id, trading_date, price, nifty_price FROM evals_daily_prices'
+            ).fetchall()
+            con.close()
+
+            prices_map = {}
+            nifty_map  = {}
+            for row in price_rows:
+                sid = row[0]
+                if sid not in prices_map:
+                    prices_map[sid] = {}
+                    nifty_map[sid]  = {}
+                if row[2] is not None:
+                    prices_map[sid][row[1]] = row[2]
+                if row[3] is not None:
+                    nifty_map[sid][row[1]]  = row[3]
+
+            for s in signals:
+                sid = s.get('id', '')
+                s['prices']       = prices_map.get(sid, {})
+                s['nifty_prices'] = nifty_map.get(sid, {})
+
+            print(f'[EVAL] Loaded {len(signals)} signals from DB')
+            return signals
+
+        except Exception as e:
+            print(f'[EVAL] DB signal read error, falling back to signals_log.json: {e}')
+
+    # Fallback: signals_log.json
     if not os.path.exists(SIGNALS_FILE):
         return []
     try:
@@ -218,7 +294,57 @@ def load_signals():
         return []
 
 def save_signals(signals):
-    """Write signals list back to signals_log.json (atomic)."""
+    """Write signals to evals_signals + evals_daily_prices DB tables.
+    Also keeps signals_log.json in sync as backup.
+    """
+    if not os.path.exists(DB_FILE):
+        # DB not available — write to JSON only
+        _save_signals_json(signals)
+        return
+
+    try:
+        con = sqlite3.connect(DB_FILE)
+        con.execute('PRAGMA journal_mode=WAL')
+
+        sig_sql = (
+            'INSERT OR REPLACE INTO evals_signals (id, ' +
+            ', '.join(_SIGNAL_COLUMNS) + ') VALUES (?' +
+            ', ?' * len(_SIGNAL_COLUMNS) + ')'
+        )
+        price_sql = (
+            'INSERT OR REPLACE INTO evals_daily_prices '
+            '(signal_id, trading_date, price, nifty_price) VALUES (?, ?, ?, ?)'
+        )
+
+        sig_rows   = []
+        price_rows = []
+        for s in signals:
+            if not isinstance(s, dict) or not s.get('id'):
+                continue
+            row = [s.get('id')]
+            for col in _SIGNAL_COLUMNS:
+                row.append(_coerce_signal(col, s.get(col)))
+            sig_rows.append(row)
+
+            sid = s['id']
+            prices      = s.get('prices', {}) or {}
+            nifty_prices = s.get('nifty_prices', {}) or {}
+            all_dates = set(prices) | set(nifty_prices)
+            for d in all_dates:
+                price_rows.append((sid, d, prices.get(d), nifty_prices.get(d)))
+
+        with con:
+            con.executemany(sig_sql, sig_rows)
+            con.executemany(price_sql, price_rows)
+        con.close()
+        print(f'[EVAL] Saved {len(sig_rows)} signals, {len(price_rows)} price rows to DB')
+
+    except Exception as e:
+        print(f'[EVAL] DB save error: {e} — falling back to JSON')
+        _save_signals_json(signals)
+
+def _save_signals_json(signals):
+    """Backup write to signals_log.json."""
     os.makedirs(os.path.dirname(SIGNALS_FILE), exist_ok=True)
     tmp = SIGNALS_FILE + '.tmp'
     try:
