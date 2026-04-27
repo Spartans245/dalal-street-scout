@@ -9,7 +9,8 @@ Modes:
   python eval_worker.py --price-refresh  # Intraday: update prices for open signals
 
 Reads (never writes):
-  data/computed/stocks.json  — current stock prices, stages, scores
+  data/dalal_street.db       — stocks_live view (current prices, stages, scores)
+  data/computed/stocks.json  — fallback only if DB unavailable
 
 Writes (EVALS-owned only):
   data/signals_log.json      — signal log with prices, stage history, outcomes

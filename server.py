@@ -29,7 +29,7 @@ API:
   GET /api/refresh/yf          → trigger YF fundamentals + compute
   GET /api/refresh/compute     → trigger compute only
   GET /api/indices             → NIFTY 50 + SENSEX (direct Kite call)
-  GET /api/evals               → signal performance log (signals_log.json)
+  GET /api/evals               → signal performance log (reads evals_signals + evals_daily_prices from DB)
   POST /api/evals/log          → manually append a signal entry
   POST /api/analyze/<ticker>   → LLM risk/reward analysis
 
