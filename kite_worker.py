@@ -593,6 +593,35 @@ def run_price_refresh():
         print(f'[KITE] Price refresh write error: {e}')
         sys.exit(1)
 
+    # Also update stocks_master with live prices (targeted SQL UPDATE — no full file parse)
+    try:
+        import sqlite3
+        db_path = os.path.join(BASE_DIR, 'data', 'dalal_street.db')
+        trading_date = computed.get('price_refreshed_at', '')[:10]
+        if trading_date and os.path.exists(db_path):
+            con = sqlite3.connect(db_path)
+            con.execute('PRAGMA journal_mode=WAL')
+            rows = [
+                (ltp_map[s['ticker']],
+                 eod_map.get(s['ticker']) or s.get('prevClose') or ltp_map[s['ticker']],
+                 round((ltp_map[s['ticker']] - (eod_map.get(s['ticker']) or s.get('prevClose') or ltp_map[s['ticker']])) /
+                       (eod_map.get(s['ticker']) or s.get('prevClose') or ltp_map[s['ticker']]) * 100, 2),
+                 s.get('upsidePct'),
+                 s['ticker'], trading_date)
+                for s in stocks if s.get('ticker') in ltp_map
+            ]
+            with con:
+                con.executemany(
+                    'UPDATE stocks_master SET price=?, prevClose=?, change=?, upsidePct=? '
+                    'WHERE ticker=? AND trading_date=?',
+                    rows
+                )
+            db_updated = con.total_changes
+            con.close()
+            print(f'[KITE] stocks_master price update: {db_updated} rows for {trading_date}')
+    except Exception as e:
+        print(f'[KITE] stocks_master update error (non-fatal): {e}')
+
     duration = round(time.time() - t0, 1)
     print(f'[KITE] Price refresh done: {updated}/{len(stocks)} updated in {duration}s')
 
