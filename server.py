@@ -95,27 +95,84 @@ def load_kite():
 VALID_TABS = {'all', 'breakout', 'coiling', 'pre_cross', 'post_cross',
               'pullback', 'trending', 'none'}
 
-def db_tickers_for_tab(tab):
-    """
-    Return a set of tickers for the given tab from the most recent trading_date
-    in stocks_master.  Returns None if DB unavailable or tab is 'all'.
-    """
-    if tab == 'all' or not os.path.exists(DB_FILE):
+# JSON fields stored as text in DB — deserialise on read
+_DB_JSON_FIELDS = {'catalysts', 'srResistance', 'srSupport', 'prevStages'}
+# Boolean fields stored as 0/1 in DB — convert to bool on read
+_DB_BOOL_FIELDS = {
+    'near52High', 'macd', 'emaCross', 'emaTrend', 'volConfirm', 'emaPreCross',
+    'emaPostCross', 'emaPullback', 'golden', 'priceCoiling', 'volShrinking',
+    'ema14Rising', 'ema14RisingFast', 'near38High', 'mmConditional',
+}
+
+def _row_to_dict(cur, row):
+    """Convert a sqlite3 Row to a plain dict, deserialising JSON/bool fields."""
+    cols = [d[0] for d in cur.description]
+    d = {}
+    for col, val in zip(cols, row):
+        if col in _DB_JSON_FIELDS:
+            try:
+                d[col] = json.loads(val) if val else []
+            except Exception:
+                d[col] = []
+        elif col in _DB_BOOL_FIELDS:
+            d[col] = bool(val) if val is not None else False
+        else:
+            d[col] = val
+    return d
+
+def db_query_stocks(tab=None):
+    """Query stocks_live from DB. Returns list of stock dicts, or None on error."""
+    if not os.path.exists(DB_FILE):
         return None
     try:
         con = sqlite3.connect(f'file:{DB_FILE}?mode=ro', uri=True,
                               check_same_thread=False)
-        cur = con.execute(
-            'SELECT ticker FROM stocks_master '
-            'WHERE trading_date=(SELECT MAX(trading_date) FROM stocks_master) '
-            'AND stage=?',
-            (tab,)
-        )
-        tickers = {row[0] for row in cur.fetchall()}
+        if tab and tab in VALID_TABS and tab != 'all':
+            cur = con.execute('SELECT * FROM stocks_live WHERE stage=?', (tab,))
+        else:
+            cur = con.execute('SELECT * FROM stocks_live')
+        stocks = [_row_to_dict(cur, row) for row in cur.fetchall()]
         con.close()
-        return tickers
+        return stocks
     except Exception as e:
-        print(f'[DB] tab query error ({tab}): {e}')
+        print(f'[DB] stocks query error: {e}')
+        return None
+
+def db_query_one(ticker):
+    """Query a single stock from stocks_live. Returns dict or None."""
+    if not os.path.exists(DB_FILE):
+        return None
+    try:
+        con = sqlite3.connect(f'file:{DB_FILE}?mode=ro', uri=True,
+                              check_same_thread=False)
+        cur = con.execute('SELECT * FROM stocks_live WHERE ticker=?', (ticker,))
+        row = cur.fetchone()
+        result = _row_to_dict(cur, row) if row else None
+        con.close()
+        return result
+    except Exception as e:
+        print(f'[DB] single stock query error ({ticker}): {e}')
+        return None
+
+def db_meta():
+    """Return (trading_date, count, stage_counts) from stocks_live, or None on error."""
+    if not os.path.exists(DB_FILE):
+        return None
+    try:
+        con = sqlite3.connect(f'file:{DB_FILE}?mode=ro', uri=True,
+                              check_same_thread=False)
+        cur = con.execute('SELECT trading_date, COUNT(*) FROM stocks_live GROUP BY trading_date')
+        row = cur.fetchone()
+        if not row:
+            con.close()
+            return None
+        trading_date, count = row
+        cur2 = con.execute('SELECT stage, COUNT(*) FROM stocks_live GROUP BY stage')
+        stage_counts = {r[0]: r[1] for r in cur2.fetchall()}
+        con.close()
+        return trading_date, count, stage_counts
+    except Exception as e:
+        print(f'[DB] meta query error: {e}')
         return None
 
 
@@ -123,13 +180,11 @@ def db_tickers_for_tab(tab):
 # STATE
 # ════════════════════════════════════════════════════════════════════
 state = {
-    'stocks':             [],
     'last_updated':       None,
     'price_refreshed_at': None,
     'status':             'starting',
     'market_mode':        'unknown',
     'count':              0,
-    'file_mtime':         0.0,
     'stage_counts':       {},
     'pipeline_pid':  None,   # orchestrator subprocess PID when running
     'indices':       {},     # {'NIFTY 50': {'price':..,'change':..}, 'SENSEX': {...}}
@@ -160,86 +215,39 @@ def get_market_mode():
 
 
 # ════════════════════════════════════════════════════════════════════
-# COMPUTED FILE LOADER
+# METADATA LOADER — reads DB meta + status files, no stocks in RAM
 # ════════════════════════════════════════════════════════════════════
 def load_computed(force=False):
-    """Load data/computed/stocks.json into state. Thread-safe.
-    Returns True on success, False on failure.
+    """Refresh state metadata from DB + status files. No stocks loaded into RAM.
+    Returns True if DB has data, False otherwise.
     """
-    if not os.path.exists(COMPUTED_FILE):
+    meta = db_meta()
+    if not meta:
+        print('[SERVER] Load error: DB unavailable or empty')
         return False
+
+    trading_date, count, stage_counts = meta
+    mode = get_market_mode()
+
+    # Price refresh time from status file
+    price_refreshed = ''
     try:
-        mtime = os.path.getmtime(COMPUTED_FILE)
-        with state_lock:
-            current_mtime = state['file_mtime']
-        if not force and mtime <= current_mtime:
-            return True  # no change
+        with open(os.path.join(BASE_DIR, 'data', 'status', 'price.json')) as _pf:
+            _ps = json.load(_pf)
+        if _ps.get('status') == 'done':
+            price_refreshed = _ps.get('saved_at', '')
+    except Exception:
+        pass
 
-        with open(COMPUTED_FILE, encoding='utf-8') as f:
-            data = json.load(f)
+    with state_lock:
+        state['last_updated']       = trading_date
+        state['price_refreshed_at'] = price_refreshed or trading_date
+        state['count']              = count
+        state['status']             = 'live' if mode == 'open' else 'eod'
+        state['market_mode']        = mode
+        state['stage_counts']       = stage_counts
 
-        stocks = data.get('stocks', [])
-        if not stocks:
-            return False
-
-        # Re-classify stages from stored tech fields (picks up any classify_stage() changes)
-        for s in stocks:
-            try:
-                tech = {
-                    'ema_cross':           s.get('emaCross', False),
-                    'ema_cross_days_ago':  s.get('emaCrossDays'),
-                    'ema_trend':           s.get('emaTrend', False),
-                    'ema_pre_cross':       s.get('emaPreCross', False),
-                    'ema_post_cross':      s.get('emaPostCross', False),
-                    'ema_pullback':        s.get('emaPullback', False),
-                    'vol_confirmed_cross': s.get('volConfirm', False),
-                    'vpb_detail':          s.get('vpbDetail', 'none'),
-                    'vpb_score':           s.get('vpbScore', 0),
-                }
-                s['stage'] = classify_stage(tech)
-            except Exception:
-                pass
-
-        saved_at        = data.get('saved_at', '')
-        price_refreshed = data.get('price_refreshed_at', '')
-        # Fallback: read last price refresh time from price status file
-        if not price_refreshed:
-            try:
-                price_status_path = os.path.join(BASE_DIR, 'data', 'status', 'price.json')
-                with open(price_status_path) as _pf:
-                    _ps = json.load(_pf)
-                if _ps.get('status') == 'done':
-                    price_refreshed = _ps.get('saved_at', '')
-            except Exception:
-                pass
-        mode = get_market_mode()
-
-        indices = data.get('indices', {})
-
-        # Compute stage_counts from the (freshly classified) stocks list
-        stage_counts = {}
-        for s in stocks:
-            st = s.get('stage', 'none')
-            stage_counts[st] = stage_counts.get(st, 0) + 1
-
-        with state_lock:
-            state['stocks']             = stocks
-            state['last_updated']       = saved_at
-            state['price_refreshed_at'] = price_refreshed
-            state['count']              = len(stocks)
-            state['status']             = 'live' if mode == 'open' else 'eod'
-            state['market_mode']        = mode
-            state['file_mtime']         = mtime
-            state['stage_counts']       = stage_counts
-            if indices:
-                state['indices']        = indices
-
-        print(f'[SERVER] Loaded {len(stocks)} stocks from computed (saved {saved_at[:16]})')
-        return True
-
-    except Exception as e:
-        print(f'[SERVER] Load error: {e}')
-        return False
+    return True
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -462,8 +470,6 @@ def spawn_compute():
         proc.wait()
         with state_lock: state['compute_pid'] = None
         if proc.returncode == 0:
-            load_computed()
-            print('[SERVER] Compute done — stocks reloaded')
             db_cmd = [PYTHON, '-W', 'ignore', os.path.join(BASE_DIR, 'db_writer.py')]
             db_proc = subprocess.Popen(db_cmd, cwd=BASE_DIR,
                 creationflags=subprocess.BELOW_NORMAL_PRIORITY_CLASS)
@@ -552,8 +558,8 @@ def spawn_evals_worker(force=False):
 def scheduler():
     print('[SERVER] Scheduler starting...')
 
-    # Load computed stocks on startup
-    loaded = load_computed(force=True)
+    # Load metadata from DB on startup
+    loaded = load_computed()
 
     if not loaded:
         print('[SERVER] No computed data — starting full pipeline...')
@@ -583,7 +589,7 @@ def scheduler():
         day  = now.weekday()   # 0=Mon … 6=Sun
         mins = now.hour * 60 + now.minute
 
-        # File watcher — reload if compute.py updated stocks.json
+        # Refresh metadata from DB every 30s tick
         load_computed()
 
         # ── MARKET OPEN: price refresh every 5 min ──────────────────
@@ -592,11 +598,13 @@ def scheduler():
 
             # Price refresh every 5 min — skip if full scan already running
             with state_lock:
-                mtime = state['file_mtime']
-                busy  = bool(state.get('pipeline_pid') or state.get('nse_pid') or state.get('compute_pid'))
+                busy         = bool(state.get('pipeline_pid') or state.get('nse_pid') or state.get('compute_pid'))
+                last_updated = state.get('price_refreshed_at') or state.get('last_updated') or ''
             if not busy:
                 try:
-                    if time.time() - mtime > LIVE_REFRESH:
+                    # Trigger if last refresh was >5 min ago
+                    last_dt = datetime.datetime.fromisoformat(last_updated) if last_updated else datetime.datetime.min
+                    if (get_ist() - last_dt).total_seconds() > LIVE_REFRESH:
                         spawn_price_refresh()
                 except Exception:
                     pass
@@ -717,8 +725,7 @@ class Handler(BaseHTTPRequestHandler):
         # ── LLM Risk/Reward analysis for one stock ───────────────────
         if path.startswith('/api/analyze/'):
             ticker = path.replace('/api/analyze/', '').upper().strip()
-            with state_lock:
-                stock = next((s for s in state['stocks'] if s['ticker'] == ticker), None)
+            stock = db_query_one(ticker)
             if not stock:
                 self.send_json({'error': f'{ticker} not found'}, 404)
                 return
@@ -814,30 +821,28 @@ class Handler(BaseHTTPRequestHandler):
                     'stage_counts':       dict(state['stage_counts']),
                     'total_count':        state['count'],
                 }
-                all_stocks = state['stocks']
 
-                if tab and tab in VALID_TABS and tab != 'all':
-                    # DB-powered: get tickers for this stage, filter in-memory list
-                    tickers = db_tickers_for_tab(tab)
-                    if tickers is not None:
-                        stocks = [s for s in all_stocks if s.get('ticker') in tickers]
-                    else:
-                        # DB unavailable — fall back to in-memory filter
-                        stocks = [s for s in all_stocks if s.get('stage') == tab]
-                    base['tab'] = tab
-                else:
-                    stocks = list(all_stocks)
+            stocks = db_query_stocks(tab if tab in VALID_TABS else None)
+            if stocks is None:
+                self.send_json({'error': 'DB unavailable'}, 503)
+                return
+            if tab and tab in VALID_TABS and tab != 'all':
+                base['tab'] = tab
 
             self.send_json({**base, 'stocks': stocks})
             return
 
         # ── Prices (lightweight) ────────────────────────────────────
         if path == '/api/prices':
+            stocks = db_query_stocks()
+            if stocks is None:
+                self.send_json({'error': 'DB unavailable'}, 503)
+                return
+            prices = [
+                {'ticker': s['ticker'], 'price': s['price'], 'change': s['change']}
+                for s in stocks
+            ]
             with state_lock:
-                prices = [
-                    {'ticker': s['ticker'], 'price': s['price'], 'change': s['change']}
-                    for s in state['stocks']
-                ]
                 status       = state['status']
                 last_updated = state['last_updated']
             self.send_json({'status': status, 'last_updated': last_updated, 'prices': prices})
@@ -846,8 +851,7 @@ class Handler(BaseHTTPRequestHandler):
         # ── Single stock ────────────────────────────────────────────
         if path.startswith('/api/stock/'):
             ticker = path.replace('/api/stock/', '').upper().strip()
-            with state_lock:
-                stock = next((s for s in state['stocks'] if s['ticker'] == ticker), None)
+            stock = db_query_one(ticker)
             self.send_json(stock if stock else {'error': 'Not found'}, 200 if stock else 404)
             return
 
