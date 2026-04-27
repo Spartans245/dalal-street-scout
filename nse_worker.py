@@ -297,7 +297,11 @@ def main():
 
         # Store as dict keyed by symbol for easy lookup by compute.py
         fund_map = {r['symbol']: r for r in results}
-        existing['fundamentals'] = fund_map
+        # In test mode, only update the fundamentals for the tested symbols — never wipe production data
+        if args.test:
+            existing['fundamentals'].update(fund_map)
+        else:
+            existing['fundamentals'] = fund_map
         existing['fundamentals_saved_at'] = datetime.datetime.now().isoformat()
         save_raw(existing)
 

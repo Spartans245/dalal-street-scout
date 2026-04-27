@@ -315,9 +315,14 @@ def run_scan(test_symbols=None):
     for i, sym in enumerate(symbols, 1):
         token = token_map.get(sym)
         if not token:
-            # Try with -SM suffix for SME stocks
-            token = token_map.get(sym + '-SM')
-            sym_kite = sym + '-SM' if token else sym
+            # Try alternate segment suffixes: SME (-SM), Trade-to-Trade (-ST), Book Entry (-BE)
+            for suffix in ('-SM', '-ST', '-BE'):
+                token = token_map.get(sym + suffix)
+                if token:
+                    sym_kite = sym + suffix
+                    break
+            else:
+                sym_kite = sym
         else:
             sym_kite = sym
 

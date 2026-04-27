@@ -60,6 +60,25 @@ except ImportError:
     import pandas as pd
 
 
+IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+
+def get_trading_date():
+    """Return the trading date for this computation run.
+    If running between midnight and 9:15 AM IST, the market has not opened yet —
+    the data belongs to the previous trading day (could be Friday if today is Monday).
+    Otherwise return today's date.
+    """
+    now = datetime.datetime.now(IST)
+    if now.hour < 9 or (now.hour == 9 and now.minute < 15):
+        # Before market open — data is from previous trading day
+        prev = now.date() - datetime.timedelta(days=1)
+        # Skip back over weekends
+        while prev.weekday() >= 5:  # 5=Sat, 6=Sun
+            prev -= datetime.timedelta(days=1)
+        return prev.isoformat()
+    return now.date().isoformat()
+
+
 # ════════════════════════════════════════════════════════════════════
 # STATUS WRITER
 # ════════════════════════════════════════════════════════════════════
@@ -637,13 +656,15 @@ def main():
 
     # Write computed output
     duration = time.time() - t0
+    trading_date = get_trading_date()
     output = {
-        'saved_at':     datetime.datetime.now().isoformat(),
+        'saved_at':     trading_date,
         'count':        len(results),
         'errors':       errors,
         'stage_counts': dict(stage_counts),
         'stocks':       results,
     }
+    print(f'[COMPUTE] Trading date: {trading_date}')
 
     try:
         raw_str = _safe_json(output)

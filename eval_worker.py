@@ -385,6 +385,8 @@ def update_prices(signals, stocks, nifty_price, mode='eod', trading_date=None):
     updated = 0
 
     for sig in signals:
+        if sig is None:
+            continue
         if sig.get('outcome') in ('WIN', 'LOSS', 'EXPIRED'):
             continue
         if not is_within_tracking_window(sig):
@@ -409,7 +411,9 @@ def update_prices(signals, stocks, nifty_price, mode='eod', trading_date=None):
         # Full daily snapshot — EOD only (intraday prices are noisy for technicals)
         if mode == 'eod':
             snapshot = build_daily_snapshot(s, nifty_price)
-            sig.setdefault('daily_snapshots', {})[today] = snapshot
+            if not isinstance(sig.get('daily_snapshots'), dict):
+                sig['daily_snapshots'] = {}
+            sig['daily_snapshots'][today] = snapshot
 
     print(f'[EVAL] Snapshots updated: {updated} open signals ({mode})')
     return updated
@@ -883,10 +887,10 @@ def run_eod():
         trading_date = _DATE_OVERRIDE
     print(f'[EVAL] Trading date: {trading_date}')
 
-    # Skip if today (system date) is not a trading day — weekends/holidays produce no new market data.
+    # Skip if trading_date is not a trading day — weekends/holidays produce no new market data.
     # Exception: --date or --force flag = manual/backfill run, always allowed.
-    if not _DATE_OVERRIDE and not _FORCE and not is_trading_day(datetime.date.today().isoformat()):
-        print(f'[EVAL] Today ({datetime.date.today().isoformat()}) is not a trading day — skipping update.')
+    if not _DATE_OVERRIDE and not _FORCE and not is_trading_day(trading_date):
+        print(f'[EVAL] Trading date ({trading_date}) is not a trading day — skipping update.')
         return
 
     signals = load_signals()

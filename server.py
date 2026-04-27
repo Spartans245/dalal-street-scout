@@ -383,7 +383,7 @@ def spawn_price_refresh():
                 creationflags=subprocess.BELOW_NORMAL_PRIORITY_CLASS)
             proc.wait()
             if proc.returncode == 0:
-                load_computed(force=True)
+                load_computed()
         finally:
             with _price_refresh_lock:
                 _price_refresh_running = False
@@ -391,11 +391,28 @@ def spawn_price_refresh():
     threading.Thread(target=_run, daemon=True).start()
 
 
+def pid_alive(pid):
+    """Return True if a process with this PID is still running."""
+    if not pid:
+        return False
+    try:
+        import psutil
+        return psutil.pid_exists(pid)
+    except ImportError:
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+
 def spawn_nse_worker(then_compute=True):
     """Launch nse_worker.py --fundamentals in background. Optionally re-runs compute after."""
     with state_lock:
-        if state.get('nse_pid'):
+        pid = state.get('nse_pid')
+        if pid and pid_alive(pid):
             return False  # already running
+        elif pid:
+            state['nse_pid'] = None  # stale PID — clear it
     cmd = [PYTHON, '-W', 'ignore', os.path.join(BASE_DIR, 'nse_worker.py'), '--fundamentals']
     print('[SERVER] Spawning NSE fundamentals...')
     def _run():
@@ -495,8 +512,23 @@ def spawn_evals_worker(force=False):
             with state_lock:
                 state['evals_pid'] = None
             if proc.returncode == 0:
-                # eval_worker writes its own status file — nothing to do here
                 print(f'[SERVER] eval_worker done ({elapsed}s)')
+                # Run analytics → lifecycle → evals_db_writer in sequence
+                for label, script in [
+                    ('analytics_worker', 'analytics_worker.py'),
+                    ('lifecycle_worker', 'lifecycle_worker.py'),
+                    ('evals_db_writer',  'evals_db_writer.py'),
+                ]:
+                    w = subprocess.Popen(
+                        [PYTHON, '-W', 'ignore', os.path.join(BASE_DIR, script)],
+                        cwd=BASE_DIR,
+                        creationflags=subprocess.BELOW_NORMAL_PRIORITY_CLASS,
+                    )
+                    w.wait()
+                    if w.returncode != 0:
+                        print(f'[SERVER] WARN: {label} exited {w.returncode}')
+                    else:
+                        print(f'[SERVER] {label} done')
             else:
                 _write_evals_status('error', errors=1, duration=elapsed,
                                     message=f'exit code {proc.returncode}')
@@ -595,12 +627,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def send_json(self, data, status=200):
         body = _safe_json(data).encode('utf-8')
-        self.send_response(status)
-        self.send_header('Content-Type',   'application/json')
-        self.send_header('Content-Length', len(body))
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(status)
+            self.send_header('Content-Type',   'application/json')
+            self.send_header('Content-Length', len(body))
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(body)
+        except (ConnectionAbortedError, BrokenPipeError, OSError):
+            pass
 
     def send_file(self, fname, ctype):
         path = os.path.join(BASE_DIR, fname)
@@ -616,6 +651,8 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
         except FileNotFoundError:
             self.send_response(404); self.end_headers()
+        except (ConnectionAbortedError, BrokenPipeError, OSError):
+            pass
 
     def do_OPTIONS(self):
         self.send_response(200)
