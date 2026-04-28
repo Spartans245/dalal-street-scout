@@ -566,6 +566,9 @@ def update_prices(signals, stocks, nifty_price, mode='eod', trading_date=None):
     trading_date: the date of the market data (from stocks.json), not system clock.
     """
     today = trading_date or today_str()
+    if not is_trading_day(today):
+        print(f'[EVAL] update_prices: {today} is not a trading day — skipping')
+        return 0
     stock_map = {s.get('ticker', ''): s for s in stocks}
     updated = 0
 
