@@ -318,9 +318,33 @@ def read_status_file(name):
     path = os.path.join(STATUS_DIR, f'{name}.json')
     try:
         with open(path) as f:
-            return json.load(f)
+            data = json.load(f)
     except Exception:
         return {}
+
+    # If status file says "running" but no matching PID is alive, auto-correct to error.
+    # This prevents the UI from showing "RUNNING" forever after a crashed/killed worker.
+    if data.get('status') == 'running':
+        pid_key = {
+            'nse':         'nse_pid',
+            'nse_universe': 'nse_pid',
+            'kite':        'pipeline_pid',
+            'yf':          'yf_pid',
+            'compute':     'compute_pid',
+            'evals':       'evals_pid',
+        }.get(name)
+        with state_lock:
+            pid = state.get(pid_key) if pid_key else None
+        if not pid_alive(pid):
+            data['status']  = 'error'
+            data['message'] = (data.get('message') or '') + ' [process no longer running]'
+            try:
+                with open(path, 'w') as f:
+                    json.dump(data, f, indent=2)
+            except Exception:
+                pass
+
+    return data
 
 
 # ════════════════════════════════════════════════════════════════════
