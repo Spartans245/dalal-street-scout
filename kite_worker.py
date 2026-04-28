@@ -597,25 +597,29 @@ def run_price_refresh():
     try:
         import sqlite3
         db_path = os.path.join(BASE_DIR, 'data', 'dalal_street.db')
-        trading_date = computed.get('price_refreshed_at', '')[:10]
-        if trading_date and os.path.exists(db_path):
+        if os.path.exists(db_path):
             con = sqlite3.connect(db_path)
             con.execute('PRAGMA journal_mode=WAL')
-            rows = [
-                (ltp_map[s['ticker']],
-                 eod_map.get(s['ticker']) or s.get('prevClose') or ltp_map[s['ticker']],
-                 round((ltp_map[s['ticker']] - (eod_map.get(s['ticker']) or s.get('prevClose') or ltp_map[s['ticker']])) /
-                       (eod_map.get(s['ticker']) or s.get('prevClose') or ltp_map[s['ticker']]) * 100, 2),
-                 s.get('upsidePct'),
-                 s['ticker'], trading_date)
-                for s in stocks if s.get('ticker') in ltp_map
-            ]
-            with con:
-                con.executemany(
-                    'UPDATE stocks_master SET price=?, prevClose=?, change=?, upsidePct=? '
-                    'WHERE ticker=? AND trading_date=?',
-                    rows
-                )
+            # Use MAX(trading_date) — not today's date — because compute may not have
+            # run yet today. Price refresh patches whatever the latest EOD row is.
+            cur = con.execute('SELECT MAX(trading_date) FROM stocks_master')
+            trading_date = (cur.fetchone() or [None])[0]
+            if trading_date:
+                rows = [
+                    (ltp_map[s['ticker']],
+                     eod_map.get(s['ticker']) or s.get('prevClose') or ltp_map[s['ticker']],
+                     round((ltp_map[s['ticker']] - (eod_map.get(s['ticker']) or s.get('prevClose') or ltp_map[s['ticker']])) /
+                           (eod_map.get(s['ticker']) or s.get('prevClose') or ltp_map[s['ticker']]) * 100, 2),
+                     s.get('upsidePct'),
+                     s['ticker'], trading_date)
+                    for s in stocks if s.get('ticker') in ltp_map
+                ]
+                with con:
+                    con.executemany(
+                        'UPDATE stocks_master SET price=?, prevClose=?, change=?, upsidePct=? '
+                        'WHERE ticker=? AND trading_date=?',
+                        rows
+                    )
             db_updated = con.total_changes
             con.close()
             print(f'[KITE] stocks_master price update: {db_updated} rows for {trading_date}')
