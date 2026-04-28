@@ -603,8 +603,9 @@ def scheduler():
         _computed_today = _cs.get('status') == 'done' and (_cs.get('saved_at','') or '')[:10] == _today
     except Exception:
         _computed_today = False
-    eod_done_today    = _computed_today
-    sunday_done_this_week = False  # Sunday 1 AM full scan
+    eod_done_today        = _computed_today
+    sunday_done_this_week = False
+    _last_price_refresh   = 0.0  # unix timestamp — 0 forces immediate refresh on startup
 
     while True:
         time.sleep(30)  # check every 30 seconds
@@ -622,22 +623,10 @@ def scheduler():
 
             # Price refresh every 5 min — skip if full scan already running
             with state_lock:
-                busy         = bool(state.get('pipeline_pid') or state.get('nse_pid') or state.get('compute_pid'))
-                last_updated = state.get('price_refreshed_at') or state.get('last_updated') or ''
-            if not busy:
-                try:
-                    # Trigger if last refresh was >5 min ago
-                    # Strip timezone info so comparison works regardless of tz-aware/naive mix
-                    if last_updated:
-                        last_dt = datetime.datetime.fromisoformat(last_updated.replace('Z', ''))
-                        last_dt = last_dt.replace(tzinfo=None)
-                    else:
-                        last_dt = datetime.datetime.min
-                    if (get_ist() - last_dt).total_seconds() > LIVE_REFRESH:
-                        spawn_price_refresh()
-                except Exception as e:
-                    print(f'[SCHEDULER] price refresh timer error: {e}')
-                    spawn_price_refresh()  # trigger anyway on parse error
+                busy = bool(state.get('pipeline_pid') or state.get('nse_pid') or state.get('compute_pid'))
+            if not busy and (time.time() - _last_price_refresh) > LIVE_REFRESH:
+                spawn_price_refresh()
+                _last_price_refresh = time.time()
 
         # ── EOD: owned by REFRESH_EOD.bat (Task Scheduler 3:50 PM) ──────
         # Server no longer triggers EOD — REFRESH_EOD.bat is the single owner.
