@@ -292,26 +292,6 @@ def run_pipeline(test=False, from_step=None, eod=False):
     st = read_status('compute')
     print_status('compute', st)
 
-    # ── Steps 5/6/7: EVALS workers (EOD only) — run immediately after compute ──
-    # eval_worker reads stocks.json for prices+stages from kite — does NOT need YF.
-    # Running before yf_proc.wait() ensures EVALS updates at ~4 PM, not 6 PM+.
-    if eod and not test:
-        eval_code = run_worker('eval_worker.py', ['--eod'], label='EVALS')
-        if eval_code != 0:
-            print(f'[ORCH] WARN: eval_worker failed (exit {eval_code}) — signals_log not updated')
-
-        anl_code = run_worker('analytics_worker.py', [], label='ANALYTICS')
-        if anl_code != 0:
-            print(f'[ORCH] WARN: analytics_worker failed (exit {anl_code}) — non-fatal')
-
-        lc_code = run_worker('lifecycle_worker.py', [], label='LIFECYCLE')
-        if lc_code != 0:
-            print(f'[ORCH] WARN: lifecycle_worker failed (exit {lc_code}) — non-fatal')
-
-        edb_code = run_worker('evals_db_writer.py', [], label='EVALS DB Writer')
-        if edb_code != 0:
-            print(f'[ORCH] WARN: evals_db_writer failed (exit {edb_code}) — EVALS not synced to DB')
-
     # ── Wait for YF, then patch D/E+ROE into stocks.json ─────────
     if yf_proc is not None:
         if yf_proc.poll() is None:
@@ -324,11 +304,27 @@ def run_pipeline(test=False, from_step=None, eod=False):
             print_status('yf', read_status('yf'))
             patch_yf_into_computed()   # triggers server file-watcher reload → UI refreshes
 
-    # ── Step A: Write EOD snapshot to DB (after YF patch so D/E+ROE are captured) ──
+    # ── Step A: Write EOD snapshot to DB — MUST run before EVALS ──
+    # eval_worker reads stocks_live from DB — db_writer must write today's rows first.
     if eod and not test:
         db_code = run_worker('db_writer.py', [], label='DB Writer')
         if db_code != 0:
             print(f'[ORCH] WARN: db_writer failed (exit {db_code}) — EOD snapshot not stored')
+
+    # ── Steps 5/6/7: EVALS workers (EOD only) ──────────────────────
+    # Runs after db_writer so stocks_live has today's data for eval_worker to read.
+    if eod and not test:
+        eval_code = run_worker('eval_worker.py', ['--eod'], label='EVALS')
+        if eval_code != 0:
+            print(f'[ORCH] WARN: eval_worker failed (exit {eval_code}) — signals not updated')
+
+        anl_code = run_worker('analytics_worker.py', [], label='ANALYTICS')
+        if anl_code != 0:
+            print(f'[ORCH] WARN: analytics_worker failed (exit {anl_code}) — non-fatal')
+
+        lc_code = run_worker('lifecycle_worker.py', [], label='LIFECYCLE')
+        if lc_code != 0:
+            print(f'[ORCH] WARN: lifecycle_worker failed (exit {lc_code}) — non-fatal')
 
     # ── Summary ───────────────────────────────────────────────────
     elapsed = round(time.time() - t0, 1)
