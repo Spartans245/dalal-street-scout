@@ -314,7 +314,10 @@ def read_evals_from_db():
 
 
 # ════════════════════════════════════════════════════════════════════
-def read_status_file(name):
+def read_status_file(name, running_pids=None):
+    """Read a worker status file. If status='running' but PID is dead, auto-correct to error.
+    running_pids: dict of {pid_key: pid} — pass in to avoid acquiring state_lock here.
+    """
     path = os.path.join(STATUS_DIR, f'{name}.json')
     try:
         with open(path) as f:
@@ -322,19 +325,16 @@ def read_status_file(name):
     except Exception:
         return {}
 
-    # If status file says "running" but no matching PID is alive, auto-correct to error.
-    # This prevents the UI from showing "RUNNING" forever after a crashed/killed worker.
-    if data.get('status') == 'running':
+    if data.get('status') == 'running' and running_pids is not None:
         pid_key = {
-            'nse':         'nse_pid',
+            'nse':          'nse_pid',
             'nse_universe': 'nse_pid',
-            'kite':        'pipeline_pid',
-            'yf':          'yf_pid',
-            'compute':     'compute_pid',
-            'evals':       'evals_pid',
+            'kite':         'pipeline_pid',
+            'yf':           'yf_pid',
+            'compute':      'compute_pid',
+            'evals':        'evals_pid',
         }.get(name)
-        with state_lock:
-            pid = state.get(pid_key) if pid_key else None
+        pid = running_pids.get(pid_key) if pid_key else None
         if not pid_alive(pid):
             data['status']  = 'error'
             data['message'] = (data.get('message') or '') + ' [process no longer running]'
@@ -898,11 +898,19 @@ class Handler(BaseHTTPRequestHandler):
 
         # ── Ctrl dashboard ──────────────────────────────────────────
         if path == '/api/ctrl':
+            with state_lock:
+                running_pids = {
+                    'pipeline_pid': state.get('pipeline_pid'),
+                    'nse_pid':      state.get('nse_pid'),
+                    'yf_pid':       state.get('yf_pid'),
+                    'compute_pid':  state.get('compute_pid'),
+                    'evals_pid':    state.get('evals_pid'),
+                }
             ctrl = {
-                'nse':     read_status_file('nse'),
-                'kite':    read_status_file('kite'),
-                'yf':      read_status_file('yf'),
-                'compute': read_status_file('compute'),
+                'nse':     read_status_file('nse',     running_pids),
+                'kite':    read_status_file('kite',    running_pids),
+                'yf':      read_status_file('yf',      running_pids),
+                'compute': read_status_file('compute', running_pids),
             }
             with state_lock:
                 ctrl['pipeline_pid'] = state.get('pipeline_pid')
