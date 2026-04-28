@@ -186,6 +186,7 @@ state = {
     'market_mode':        'unknown',
     'count':              0,
     'stage_counts':       {},
+    'price_mtime':        0.0,   # unix timestamp of last price refresh — drives 5-min scheduler
     'pipeline_pid':  None,   # orchestrator subprocess PID when running
     'indices':       {},     # {'NIFTY 50': {'price':..,'change':..}, 'SENSEX': {...}}
     'nse_pid':       None,   # nse_worker subprocess PID
@@ -416,6 +417,8 @@ def spawn_price_refresh():
             proc.wait()
             if proc.returncode == 0:
                 load_computed()
+                with state_lock:
+                    state['price_mtime'] = time.time()
         finally:
             with _price_refresh_lock:
                 _price_refresh_running = False
@@ -605,7 +608,6 @@ def scheduler():
         _computed_today = False
     eod_done_today        = _computed_today
     sunday_done_this_week = False
-    _last_price_refresh   = 0.0  # unix timestamp — 0 forces immediate refresh on startup
 
     while True:
         time.sleep(30)  # check every 30 seconds
@@ -623,10 +625,10 @@ def scheduler():
 
             # Price refresh every 5 min — skip if full scan already running
             with state_lock:
-                busy = bool(state.get('pipeline_pid') or state.get('nse_pid') or state.get('compute_pid'))
-            if not busy and (time.time() - _last_price_refresh) > LIVE_REFRESH:
+                busy       = bool(state.get('pipeline_pid') or state.get('nse_pid') or state.get('compute_pid'))
+                price_mtime = state['price_mtime']
+            if not busy and (time.time() - price_mtime) > LIVE_REFRESH:
                 spawn_price_refresh()
-                _last_price_refresh = time.time()
 
         # ── EOD: owned by REFRESH_EOD.bat (Task Scheduler 3:50 PM) ──────
         # Server no longer triggers EOD — REFRESH_EOD.bat is the single owner.
