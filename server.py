@@ -627,11 +627,17 @@ def scheduler():
             if not busy:
                 try:
                     # Trigger if last refresh was >5 min ago
-                    last_dt = datetime.datetime.fromisoformat(last_updated) if last_updated else datetime.datetime.min
+                    # Strip timezone info so comparison works regardless of tz-aware/naive mix
+                    if last_updated:
+                        last_dt = datetime.datetime.fromisoformat(last_updated.replace('Z', ''))
+                        last_dt = last_dt.replace(tzinfo=None)
+                    else:
+                        last_dt = datetime.datetime.min
                     if (get_ist() - last_dt).total_seconds() > LIVE_REFRESH:
                         spawn_price_refresh()
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f'[SCHEDULER] price refresh timer error: {e}')
+                    spawn_price_refresh()  # trigger anyway on parse error
 
         # ── EOD: owned by REFRESH_EOD.bat (Task Scheduler 3:50 PM) ──────
         # Server no longer triggers EOD — REFRESH_EOD.bat is the single owner.
