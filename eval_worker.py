@@ -1124,7 +1124,7 @@ def run_price_refresh():
 
     signals = load_signals()
     update_prices(signals, stocks, nifty, mode='price-refresh', trading_date=trading_date)
-    recompute_all_outcomes(signals)
+    # No outcome recompute here — outcomes only resolved at EOD using closing prices
     save_signals(signals)
     print('[EVAL] Price refresh done')
 
