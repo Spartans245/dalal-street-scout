@@ -6623,11 +6623,11 @@ function renderEvStock() {
   const totalFiltered = sigs.length;
   if (!_evShowAll && sigs.length > DISPLAY_LIMIT) sigs = sigs.slice(0, DISPLAY_LIMIT);
 
-  // Max trading days across all visible signals (from each stock's tier_date, not day0)
-  // Always show at least D0–D20 (21 cols); expand if actual data goes further
+  // Max trading days across all visible signals
+  // Resolved signals use all days from day0; open signals from tier_date
   const maxDays = Math.max(21, Math.max(...sigs.map(s => {
     const td = s.tier_date || s.day0;
-    return evDays(s).filter(d => d >= td).length;
+    return s.outcome !== 'OPEN' ? evDays(s).length : evDays(s).filter(d => d >= td).length;
   })));
 
   // ── Dimensions — fill available width exactly ────────────────────────
@@ -6645,7 +6645,11 @@ function renderEvStock() {
   // ── Rows ─────────────────────────────────────────────────────────────
   const rows = sigs.map(sig => {
     const tierDate = sig.tier_date || sig.day0;
-    const days = evDays(sig).filter(d => d >= tierDate);
+    // For resolved signals use all days from day0 (tier_date may be after outcome_day)
+    // For open signals filter from tier_date so matrix starts at Stock-Wise entry
+    const days = sig.outcome !== 'OPEN'
+      ? evDays(sig)
+      : evDays(sig).filter(d => d >= tierDate);
     const p0   = (days.length ? sig.prices[days[0]] : 0) || sig.price_d0;
 
     // Outcome badge — micro pill after ticker
@@ -6672,14 +6676,6 @@ function renderEvStock() {
       <div style="${FH};font-size:9px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3">${sig.ticker}${badge}</div>
       <div style="${FM};font-size:6.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3"><span style="color:${entryStageColor}">${entryStageShort}</span>·${(sig.tier_date||sig.day0).slice(5)}</div>
     </td>`;
-
-    // ── No visible days: resolved before/on tier_date ─────────────────
-    if (days.length === 0 && sig.outcome !== 'OPEN') {
-      const outcomeCol = sig.outcome === 'WIN' ? '#00c853' : sig.outcome === 'LOSS' ? '#ff1744' : 'var(--muted2)';
-      const outcomeLabel = sig.outcome === 'WIN' ? `WIN ${sig.outcome_ret!=null?'+'+sig.outcome_ret.toFixed(1)+'%':''}` : sig.outcome === 'LOSS' ? `LOSS ${sig.outcome_ret!=null?sig.outcome_ret.toFixed(1)+'%':''}` : 'EXPIRED';
-      const emptyCell = `<td colspan="${maxDays}" style="padding:2px 6px;border-bottom:1px solid var(--border);font-family:var(--fm);font-size:8px;font-weight:700;color:${outcomeCol};opacity:0.7">${outcomeLabel} · resolved before Stock-Wise entry</td>`;
-      return `<tr>${stockCell}${emptyCell}</tr>`;
-    }
 
     // ── Day cells ──────────────────────────────────────────────────────
     let prevStage = null;
