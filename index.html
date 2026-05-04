@@ -6643,6 +6643,14 @@ function renderEvStock() {
   const dayHeaders = Array.from({length: maxDays}, (_, i) => thDay(i)).join('');
 
   // ── Rows ─────────────────────────────────────────────────────────────
+  // Filter out resolved signals with no visible days after tier_date
+  sigs = sigs.filter(sig => {
+    if (sig.outcome === 'OPEN') return true;
+    const tierDate = sig.tier_date || sig.day0;
+    const days = evDays(sig).filter(d => d >= tierDate);
+    return days.length > 0;
+  });
+
   const rows = sigs.map(sig => {
     const tierDate = sig.tier_date || sig.day0;
     const days = evDays(sig).filter(d => d >= tierDate);
