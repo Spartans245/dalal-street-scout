@@ -1086,11 +1086,11 @@ def run_eod():
 
     backfill_tiers(signals)               # assign tier to any signals logged before tier field existed
     log_new_signals(signals, stocks, trading_date=trading_date)
+    recompute_all_outcomes(signals)       # resolve WIN/LOSS before price write so outcome day price is last
     eligible = update_signal_tiers(signals, stocks, trading_date=trading_date)
     check_retriggers(signals, eligible, trading_date=trading_date)
     update_stage_history(signals, stocks, trading_date=trading_date)
     update_prices(signals, stocks, nifty, mode='eod', trading_date=trading_date)
-    recompute_all_outcomes(signals)
     save_signals(signals)
 
     open_count    = sum(1 for s in signals if s.get('outcome') == 'OPEN')
