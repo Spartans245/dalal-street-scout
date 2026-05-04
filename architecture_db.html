@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dalal Street Scout — Architecture + DB</title>
+<style>
+  :root {
+    --bg: #eef0f7; --s1: #ffffff; --s2: #f5f6fa; --border: #d4d8e8;
+    --text: #1a1f36; --muted: #4a5270; --muted2: #8890aa;
+    --green: #15803d; --gold: #b45309; --blue: #2563eb;
+    --red: #dc2626; --purple: #7c3aed; --orange: #c2710c;
+    --teal: #0d9488; --sqlite: #1e6b9e;
+    --fm: 'JetBrains Mono', 'Courier New', monospace; --fh: 'Inter', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--fm); font-size: 12px; padding: 32px; }
+  h1 { font-size: 18px; letter-spacing: 2px; color: var(--sqlite); margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 11px; margin-bottom: 32px; letter-spacing: 1px; }
+  h2 { font-size: 12px; letter-spacing: 2px; color: var(--muted); margin: 36px 0 14px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  h3 { font-size: 11px; letter-spacing: 1px; color: var(--muted); margin-bottom: 10px; }
+
+  .row { display: flex; align-items: stretch; gap: 12px; width: 100%; max-width: 1300px; margin-bottom: 12px; }
+  .row.center { justify-content: center; }
+
+  .box {
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 14px 16px; background: var(--s1); flex: 1;
+  }
+  .box.blue    { border-color: #2563eb; background: rgba(37,99,235,0.06); }
+  .box.green   { border-color: #15803d; background: rgba(21,128,61,0.06); }
+  .box.gold    { border-color: #b45309; background: rgba(180,83,9,0.06); }
+  .box.purple  { border-color: #7c3aed; background: rgba(124,58,237,0.06); }
+  .box.red     { border-color: #dc2626; background: rgba(220,38,38,0.06); }
+  .box.grey    { border-color: var(--border); background: var(--s2); }
+  .box.teal    { border-color: #0d9488; background: rgba(13,148,136,0.06); }
+  .box.sqlite  { border-color: #1e6b9e; background: rgba(30,107,158,0.07); }
+  .box.sqlite2 { border-color: #1e6b9e; background: rgba(30,107,158,0.04); border-style: dashed; }
+
+  .box-title { font-size: 10px; letter-spacing: 1.5px; font-weight: bold; margin-bottom: 10px; }
+  .blue .box-title    { color: var(--blue); }
+  .green .box-title   { color: var(--green); }
+  .gold .box-title    { color: var(--gold); }
+  .purple .box-title  { color: var(--purple); }
+  .red .box-title     { color: var(--red); }
+  .grey .box-title    { color: var(--muted); }
+  .teal .box-title    { color: var(--teal); }
+  .sqlite .box-title  { color: var(--sqlite); }
+  .sqlite2 .box-title { color: var(--sqlite); }
+
+  .item { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 5px; font-size: 11px; color: var(--muted); line-height: 1.5; }
+  .item .dot { width: 5px; height: 5px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+  .dot.g { background: var(--green); }
+  .dot.b { background: var(--blue); }
+  .dot.o { background: var(--orange); }
+  .dot.p { background: var(--purple); }
+  .dot.r { background: var(--red); }
+  .dot.m { background: var(--muted2); }
+  .dot.t { background: var(--teal); }
+  .dot.s { background: var(--sqlite); }
+  .item strong { color: var(--text); }
+
+  .arrow-v { width: 2px; height: 28px; background: var(--border); margin: 0 auto; position: relative; max-width: 1300px; }
+  .arrow-v::after { content:'▼'; position:absolute; bottom:-10px; left:50%; transform:translateX(-50%); color:var(--muted); font-size:10px; }
+  .arrow-label { font-size: 9px; color: var(--muted2); text-align: center; margin: -8px 0 -4px; letter-spacing: 0.5px; max-width: 1300px; }
+
+  .badge { display: inline-block; padding: 1px 7px; border-radius: 3px; font-size: 9px; letter-spacing: 0.5px; font-weight: bold; margin-left: 6px; }
+  .badge.eod    { background: rgba(13,148,136,0.12); color: var(--teal);   border: 1px solid #0d9488; }
+  .badge.new    { background: rgba(30,107,158,0.15); color: var(--sqlite); border: 1px solid #1e6b9e; font-size:8px; }
+  .badge.api    { background: rgba(124,58,237,0.12); color: var(--purple); border: 1px solid #7c3aed; }
+  .badge.pk     { background: rgba(21,128,61,0.12);  color: var(--green);  border: 1px solid #15803d; }
+  .badge.ro     { background: rgba(180,83,9,0.10);   color: var(--gold);   border: 1px solid #b45309; }
+
+  .layer-label {
+    width: 100%; max-width: 1300px;
+    font-size: 9px; letter-spacing: 2px; color: var(--muted2);
+    text-align: center; padding: 4px 0;
+    border-top: 1px dashed var(--border);
+    border-bottom: 1px dashed var(--border);
+    margin: 8px 0;
+  }
+
+  /* Schema tables */
+  .schema-wrap { max-width: 1300px; margin-bottom: 24px; }
+  .schema-wrap h3 { margin-bottom: 8px; color: var(--sqlite); font-size: 11px; letter-spacing: 1.5px; }
+  .schema-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .schema-table th {
+    background: rgba(30,107,158,0.1); color: var(--sqlite);
+    font-size: 9px; letter-spacing: 1px; padding: 6px 10px;
+    text-align: left; border: 1px solid rgba(30,107,158,0.25);
+  }
+  .schema-table td {
+    padding: 5px 10px; border: 1px solid var(--border);
+    color: var(--muted); vertical-align: top; line-height: 1.5;
+  }
+  .schema-table td:first-child { color: var(--text); font-weight: 600; white-space: nowrap; }
+  .schema-table td.type-col { color: var(--blue); font-size: 10px; white-space: nowrap; }
+  .schema-table tr.pk-row td:first-child { color: var(--green); }
+  .schema-table tr:hover td { background: var(--s2); }
+  .schema-table .group-hdr td {
+    background: var(--s2); color: var(--muted2);
+    font-size: 9px; letter-spacing: 1.5px; padding: 3px 10px;
+    border-top: 1px solid var(--border);
+  }
+
+  .sep { width: 100%; max-width: 1300px; border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+
+  .flow { display: flex; flex-direction: column; align-items: center; gap: 0; margin-bottom: 40px; max-width: 1300px; }
+
+  code { background: var(--s2); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; font-size: 10px; color: var(--text); }
+  .mono { font-family: var(--fm); }
+
+  .callout {
+    max-width: 1300px; background: rgba(30,107,158,0.07);
+    border: 1px solid rgba(30,107,158,0.3); border-left: 3px solid var(--sqlite);
+    border-radius: 4px; padding: 12px 16px; margin-bottom: 20px;
+    font-size: 11px; color: var(--muted); line-height: 1.7;
+  }
+  .callout strong { color: var(--sqlite); }
+</style>
+</head>
+<body>
+
+<h1>DALAL STREET SCOUT — ARCHITECTURE + DATABASE</h1>
+<div class="sub">Added 2026-04-11 &nbsp;·&nbsp; SQLite backend (dalal_street.db) &nbsp;·&nbsp; 4 tables &nbsp;·&nbsp; server-side tab filtering &nbsp;·&nbsp; frontend per-tab fetch</div>
+
+<div class="callout">
+  <strong>Why the DB was added:</strong> Flat JSON files (stocks.json, signals_log.json) get fully overwritten on every pipeline run — a missed run (e.g. StopOnIdleEnd kill on Apr 6–7 crash days) means that day's data is permanently lost. The SQLite DB gives a permanent historical record. As a second benefit, the frontend previously fetched all 2,562 stocks as a 7.38 MB JSON blob and filtered in the browser — the DB enables server-side tab filtering so each tab click returns only ~40–300 rows.
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>END-TO-END DATA FLOW — WHERE THE DB FITS</h2>
+
+<div class="flow">
+
+  <!-- PIPELINE -->
+  <div class="row">
+    <div class="box grey">
+      <div class="box-title">PIPELINE (unchanged) — orchestrator.py --eod</div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:4px">
+        <div><div style="color:var(--blue);font-size:10px;margin-bottom:3px">① kite_worker</div><div class="item"><div class="dot b"></div><div>OHLCV + prices</div></div></div>
+        <div><div style="color:var(--green);font-size:10px;margin-bottom:3px">② nse_worker</div><div class="item"><div class="dot g"></div><div>PE, MCap, sector</div></div></div>
+        <div><div style="color:var(--gold);font-size:10px;margin-bottom:3px">③ yf_worker</div><div class="item"><div class="dot o"></div><div>D/E, ROE</div></div></div>
+        <div><div style="color:var(--red);font-size:10px;margin-bottom:3px">④ compute.py</div><div class="item"><div class="dot r"></div><div>All formulas → stocks.json</div></div></div>
+        <div><div style="color:var(--teal);font-size:10px;margin-bottom:3px">⑤⑥⑦ EVALS</div><div class="item"><div class="dot t"></div><div>eval / analytics / lifecycle workers</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-v"></div>
+  <div class="arrow-label">YF D/E+ROE patched into stocks.json last (so DB snapshot includes them)</div>
+  <div class="arrow-v" style="height:40px"></div>
+
+  <!-- DB WRITERS -->
+  <div class="layer-label">── NEW: DB WRITE LAYER — runs after all EVALS workers complete ──</div>
+  <div class="arrow-v" style="height:12px"></div>
+
+  <div class="row">
+    <div class="box sqlite">
+      <div class="box-title">db_writer.py &nbsp;<span class="badge eod">EOD STEP A</span> <span class="badge new">NEW</span></div>
+      <div class="item"><div class="dot s"></div><div><strong>Input:</strong> <code>data/computed/stocks.json</code> (read-only)</div></div>
+      <div class="item"><div class="dot s"></div><div><strong>Writes to:</strong> <code>eod_snapshots</code> table — one row per (ticker, trading_date)</div></div>
+      <div class="item"><div class="dot s"></div><div><strong>trading_date:</strong> extracted from <code>saved_at</code> in stocks.json — never from system clock</div></div>
+      <div class="item"><div class="dot s"></div><div><strong>Skips:</strong> chartPrices, chartDates (large arrays, redundant once DB has daily history)</div></div>
+      <div class="item"><div class="dot s"></div><div><strong>Idempotent:</strong> INSERT OR REPLACE — safe to re-run same day, overwrites previous snapshot</div></div>
+      <div class="item"><div class="dot s"></div><div>2,562 rows in ~0.44s · runs <em>after</em> YF patch so D/E + ROE are captured</div></div>
+    </div>
+    <div class="box sqlite">
+      <div class="box-title">evals_db_writer.py &nbsp;<span class="badge eod">EOD STEP B</span> <span class="badge new">NEW</span></div>
+      <div class="item"><div class="dot s"></div><div><strong>Input:</strong> <code>data/signals_log.json</code> (read-only)</div></div>
+      <div class="item"><div class="dot s"></div><div><strong>Writes to:</strong> <code>evals_signals</code>, <code>evals_daily_prices</code>, <code>nifty_eod</code></div></div>
+      <div class="item"><div class="dot s"></div><div><strong>Full rebuild:</strong> reads all 4,680 signals, normalises price dicts into rows, upserts everything</div></div>
+      <div class="item"><div class="dot s"></div><div><strong>Runs after:</strong> lifecycle_worker (Step ⑦) so the DB always matches the final signals_log state</div></div>
+      <div class="item"><div class="dot s"></div><div>4,680 signal rows · 30,308 price rows · 3 nifty rows · ~3.5s</div></div>
+    </div>
+  </div>
+
+  <div class="arrow-v"></div>
+
+  <!-- DB FILE -->
+  <div class="row center">
+    <div class="box sqlite" style="flex:0 0 500px;text-align:center">
+      <div class="box-title">data/dalal_street.db &nbsp;—&nbsp; SQLite WAL mode</div>
+      <div style="display:flex;justify-content:center;gap:32px;margin-top:8px;flex-wrap:wrap">
+        <div><div style="color:var(--sqlite);font-size:10px;margin-bottom:3px">eod_snapshots</div><div style="color:var(--muted);font-size:11px">2,562 rows/day · ~1.6 MB/day</div></div>
+        <div><div style="color:var(--sqlite);font-size:10px;margin-bottom:3px">evals_signals</div><div style="color:var(--muted);font-size:11px">1 row per signal cycle</div></div>
+        <div><div style="color:var(--sqlite);font-size:10px;margin-bottom:3px">evals_daily_prices</div><div style="color:var(--muted);font-size:11px">normalised price rows</div></div>
+        <div><div style="color:var(--sqlite);font-size:10px;margin-bottom:3px">nifty_eod</div><div style="color:var(--muted);font-size:11px">1 row per trading date</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-v"></div>
+
+  <!-- SERVER -->
+  <div class="row">
+    <div class="box purple">
+      <div class="box-title">SERVER.PY — DB-AWARE ENDPOINTS <span class="badge new">NEW</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px">
+        <div>
+          <div style="color:var(--muted2);font-size:9px;letter-spacing:1px;margin-bottom:6px">EXISTING (unchanged)</div>
+          <div class="item"><div class="dot p"></div><div><code>GET /api/stocks</code> → full 2,562 stocks from in-memory state</div></div>
+          <div class="item"><div class="dot p"></div><div><code>GET /api/evals</code> → signals_log.json direct read</div></div>
+          <div class="item"><div class="dot p"></div><div><code>GET /api/lifecycle</code> → lifecycle_log.json direct read</div></div>
+        </div>
+        <div>
+          <div style="color:var(--sqlite);font-size:9px;letter-spacing:1px;margin-bottom:6px">NEW — DB-POWERED</div>
+          <div class="item"><div class="dot s"></div><div><code>GET /api/stocks?tab=breakout</code> → DB query → filter in-memory → ~98 stocks</div></div>
+          <div class="item"><div class="dot s"></div><div><code>stage_counts</code> always returned in every <code>/api/stocks</code> response</div></div>
+          <div class="item"><div class="dot s"></div><div><code>total_count</code> always returned — frontend uses for badge counts</div></div>
+          <div class="item"><div class="dot s"></div><div>Fallback: if DB missing → in-memory <code>stage===tab</code> filter used instead</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-v"></div>
+
+  <!-- FRONTEND -->
+  <div class="row">
+    <div class="box green">
+      <div class="box-title">FRONTEND (index.html) — PER-TAB FETCH <span class="badge new">NEW</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px">
+        <div>
+          <div style="color:var(--muted2);font-size:9px;letter-spacing:1px;margin-bottom:6px">BEFORE (single dump)</div>
+          <div class="item"><div class="dot m"></div><div>Page load → <code>GET /api/stocks</code> → 7.38 MB → browser filters 2,562 in JS</div></div>
+          <div class="item"><div class="dot m"></div><div>Tab switch = JS filter on <code>allStocks</code> — no network call</div></div>
+          <div class="item"><div class="dot m"></div><div>Any tab with only 98 stocks still transferred 7.38 MB</div></div>
+        </div>
+        <div>
+          <div style="color:var(--green);font-size:9px;letter-spacing:1px;margin-bottom:6px">AFTER (per-tab)</div>
+          <div class="item"><div class="dot g"></div><div>Page load → <code>GET /api/stocks</code> → <code>planStocks</code> (full set, plan view + search)</div></div>
+          <div class="item"><div class="dot g"></div><div>Tab switch → <code>fetchTab(stage)</code> → <code>GET /api/stocks?tab=X</code> → small payload</div></div>
+          <div class="item"><div class="dot g"></div><div><code>serverStageCounts</code> from response → tab badges always show full-universe counts</div></div>
+          <div class="item"><div class="dot g"></div><div><code>planStocks</code> used for: plan view, search, watchlist, score view, strategy, sector PE</div></div>
+          <div class="item"><div class="dot g"></div><div><code>allStocks</code> used for: scanner table only (current tab's subset)</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>ORCHESTRATOR STEP ORDER — --EOD FLAG</h2>
+<div class="row">
+  <div class="box grey">
+    <div class="box-title">FULL EOD SEQUENCE (orchestrator.py --eod)</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:6px">
+      <div>
+        <div style="color:var(--blue);font-size:9px;letter-spacing:1px;margin-bottom:6px">SCANNER PIPELINE</div>
+        <div class="item"><div class="dot b"></div><div>① nse_worker --universe</div></div>
+        <div class="item"><div class="dot b"></div><div>② nse + kite (parallel)</div></div>
+        <div class="item"><div class="dot b"></div><div>③ compute.py --eod</div></div>
+      </div>
+      <div>
+        <div style="color:var(--teal);font-size:9px;letter-spacing:1px;margin-bottom:6px">EVALS WORKERS</div>
+        <div class="item"><div class="dot t"></div><div>④ eval_worker --eod</div></div>
+        <div class="item"><div class="dot t"></div><div>⑤ analytics_worker</div></div>
+        <div class="item"><div class="dot t"></div><div>⑥ lifecycle_worker</div></div>
+        <div class="item"><div class="dot t"></div><div>⑦ evals_db_writer <span class="badge new">NEW</span></div></div>
+      </div>
+      <div>
+        <div style="color:var(--gold);font-size:9px;letter-spacing:1px;margin-bottom:6px">YF PATCH</div>
+        <div class="item"><div class="dot o"></div><div>⑧ wait for yf_worker</div></div>
+        <div class="item"><div class="dot o"></div><div>⑨ patch_yf_into_computed()</div></div>
+        <div class="item"><div class="dot m"></div><div>D/E + ROE → stocks.json</div></div>
+      </div>
+      <div>
+        <div style="color:var(--sqlite);font-size:9px;letter-spacing:1px;margin-bottom:6px">DB SNAPSHOT</div>
+        <div class="item"><div class="dot s"></div><div>⑩ db_writer.py <span class="badge new">NEW</span></div></div>
+        <div class="item"><div class="dot s"></div><div>Runs <em>after</em> YF patch</div></div>
+        <div class="item"><div class="dot s"></div><div>D/E + ROE captured in row</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<hr class="sep">
+<h2>TABLE SCHEMAS</h2>
+
+<!-- eod_snapshots -->
+<div class="schema-wrap">
+  <h3>TABLE: eod_snapshots &nbsp;—&nbsp; one row per (ticker, trading_date) &nbsp;·&nbsp; 2,562 rows/day &nbsp;·&nbsp; ~1.6 MB/day &nbsp;·&nbsp; ~410 MB/year</h3>
+  <table class="schema-table">
+    <thead>
+      <tr><th>Column</th><th>SQLite Type</th><th>Source field</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr class="group-hdr"><td colspan="4">PRIMARY KEY</td></tr>
+      <tr class="pk-row">
+        <td>ticker</td><td class="type-col">TEXT NOT NULL</td><td>stocks.json → stocks[].ticker</td><td>NSE symbol e.g. <code>RELIANCE</code></td>
+      </tr>
+      <tr class="pk-row">
+        <td>trading_date</td><td class="type-col">TEXT NOT NULL</td><td>stocks.json → saved_at (date portion)</td><td>ISO date e.g. <code>2026-04-10</code>. Derived from <code>saved_at</code>, never system clock</td>
+      </tr>
+      <tr class="group-hdr"><td colspan="4">IDENTITY</td></tr>
+      <tr><td>name</td><td class="type-col">TEXT</td><td>name</td><td>Company display name</td></tr>
+      <tr><td>sector</td><td class="type-col">TEXT</td><td>sector</td><td>NSE sector classification</td></tr>
+      <tr><td>board</td><td class="type-col">TEXT</td><td>board</td><td><code>main</code> or <code>sme</code></td></tr>
+      <tr class="group-hdr"><td colspan="4">PRICE / FUNDAMENTALS</td></tr>
+      <tr><td>price</td><td class="type-col">REAL</td><td>price</td><td>Last close price (₹)</td></tr>
+      <tr><td>prevClose</td><td class="type-col">REAL</td><td>prevClose</td><td>Previous session close</td></tr>
+      <tr><td>change</td><td class="type-col">REAL</td><td>change</td><td>% change from prevClose</td></tr>
+      <tr><td>pe</td><td class="type-col">REAL</td><td>pe</td><td>NSE P/E ratio</td></tr>
+      <tr><td>mcap</td><td class="type-col">INTEGER</td><td>mcap</td><td>Market cap in ₹ Cr</td></tr>
+      <tr><td>promoterHolding</td><td class="type-col">INTEGER</td><td>promoterHolding</td><td>% held by promoters</td></tr>
+      <tr><td>pledging</td><td class="type-col">INTEGER</td><td>pledging</td><td>% of promoter shares pledged</td></tr>
+      <tr><td>debtEq</td><td class="type-col">REAL</td><td>debtEq</td><td>Debt/Equity ratio (from yf_worker)</td></tr>
+      <tr><td>roe</td><td class="type-col">REAL</td><td>roe</td><td>Return on Equity % (from yf_worker, NULL where unavailable)</td></tr>
+      <tr><td>deFlag</td><td class="type-col">TEXT</td><td>deFlag</td><td><code>DEBT FREE</code> / <code>LOW DEBT</code> / <code>MODERATE</code> / <code>HIGH DEBT</code> / <code>LEVERAGED</code></td></tr>
+      <tr><td>roeFlag</td><td class="type-col">TEXT</td><td>roeFlag</td><td><code>EXCEL</code> / <code>GOOD</code> / <code>WEAK</code> / <code>NEGATIVE</code></td></tr>
+      <tr><td>roeWarn</td><td class="type-col">TEXT</td><td>roeWarn</td><td><code>na</code> if ROE data unavailable</td></tr>
+      <tr><td>sectorMedianPe</td><td class="type-col">REAL</td><td>sectorMedianPe</td><td>Median PE of stocks in same sector</td></tr>
+      <tr><td>peVsSector</td><td class="type-col">REAL</td><td>peVsSector</td><td>% deviation of stock PE from sector median</td></tr>
+      <tr class="group-hdr"><td colspan="4">52W / 38W RANGE</td></tr>
+      <tr><td>wk52High / wk52Low</td><td class="type-col">REAL</td><td>wk52High / wk52Low</td><td>52-week high/low</td></tr>
+      <tr><td>wk38High / wk38Low</td><td class="type-col">REAL</td><td>wk38High / wk38Low</td><td>38-week (9-month) high/low — used for ATH</td></tr>
+      <tr><td>near52High</td><td class="type-col">INTEGER</td><td>near52High (bool)</td><td>1 if price within 5% of 52W high</td></tr>
+      <tr><td>near38High</td><td class="type-col">INTEGER</td><td>near38High (bool)</td><td>1 if price within 5% of 38W high</td></tr>
+      <tr><td>pctFrom38High / pctFrom38Low</td><td class="type-col">REAL</td><td>pctFrom38High / pctFrom38Low</td><td>% distance from 38W high/low</td></tr>
+      <tr><td>ath</td><td class="type-col">REAL</td><td>ath</td><td>All-time high (9M window)</td></tr>
+      <tr class="group-hdr"><td colspan="4">TECHNICAL INDICATORS</td></tr>
+      <tr><td>rsi</td><td class="type-col">REAL</td><td>rsi</td><td>14-period RSI</td></tr>
+      <tr><td>adx</td><td class="type-col">REAL</td><td>adx</td><td>Average Directional Index (trend strength)</td></tr>
+      <tr><td>macd</td><td class="type-col">INTEGER</td><td>macd (bool)</td><td>1 if MACD bullish crossover</td></tr>
+      <tr><td>emaSignal</td><td class="type-col">TEXT</td><td>emaSignal</td><td><code>cross</code> / <code>trend</code> / <code>none</code></td></tr>
+      <tr><td>emaCross</td><td class="type-col">INTEGER</td><td>emaCross (bool)</td><td>1 if 14 EMA crossed above 50 EMA within 5 days</td></tr>
+      <tr><td>emaCrossDays</td><td class="type-col">INTEGER</td><td>emaCrossDays</td><td>Days since EMA cross (NULL if no recent cross)</td></tr>
+      <tr><td>emaTrend</td><td class="type-col">INTEGER</td><td>emaTrend (bool)</td><td>1 if 14 EMA above 50 EMA (trending up)</td></tr>
+      <tr><td>emaPreCross</td><td class="type-col">INTEGER</td><td>emaPreCross (bool)</td><td>1 if gap &lt; 0.5% — cross expected within 1 day</td></tr>
+      <tr><td>emaPostCross</td><td class="type-col">INTEGER</td><td>emaPostCross (bool)</td><td>1 if cross happened 1–2 days ago, lines still close</td></tr>
+      <tr><td>emaPullback</td><td class="type-col">INTEGER</td><td>emaPullback (bool)</td><td>1 if price pulled back to within 2% of 14 EMA</td></tr>
+      <tr><td>golden</td><td class="type-col">INTEGER</td><td>golden (bool)</td><td>1 if 30 EMA &gt; 190 EMA (golden cross)</td></tr>
+      <tr><td>ema14 / ema50</td><td class="type-col">REAL</td><td>ema14 / ema50</td><td>Current EMA values</td></tr>
+      <tr><td>emaGapPct</td><td class="type-col">REAL</td><td>emaGapPct</td><td>% gap between 14 EMA and 50 EMA</td></tr>
+      <tr><td>ema14Rising / ema14RisingFast</td><td class="type-col">INTEGER</td><td>(bool)</td><td>EMA direction flags</td></tr>
+      <tr class="group-hdr"><td colspan="4">VPB (VOLUME-PRICE BREAKOUT)</td></tr>
+      <tr><td>vpbScore</td><td class="type-col">INTEGER</td><td>vpbScore</td><td>0–18 breakout quality score</td></tr>
+      <tr><td>vpbDetail</td><td class="type-col">TEXT</td><td>vpbDetail</td><td><code>breakout</code> / <code>weak_breakout</code> / <code>coiling</code> / <code>vol_only</code> / <code>distribution</code> / <code>none</code></td></tr>
+      <tr><td>vpbRangeHeight</td><td class="type-col">REAL</td><td>vpbRangeHeight</td><td>Price range height over 5-day coiling window (₹)</td></tr>
+      <tr><td>crossScore</td><td class="type-col">INTEGER</td><td>crossScore</td><td>EMA cross quality score (8–18)</td></tr>
+      <tr><td>priceCoiling</td><td class="type-col">INTEGER</td><td>priceCoiling (bool)</td><td>1 if range &lt; 4% over last 5 days</td></tr>
+      <tr><td>volShrinking</td><td class="type-col">INTEGER</td><td>volShrinking (bool)</td><td>1 if volume &lt; 85% of 20-day avg for 3 days</td></tr>
+      <tr><td>volConfirm</td><td class="type-col">INTEGER</td><td>volConfirm (bool)</td><td>1 if breakout day volume ≥ 1.5× average</td></tr>
+      <tr><td>volRatio</td><td class="type-col">REAL</td><td>volRatio</td><td>Today's volume / 20-day avg volume</td></tr>
+      <tr><td>avg20Vol</td><td class="type-col">REAL</td><td>avg20Vol</td><td>20-day average volume (shares)</td></tr>
+      <tr><td>dailyVol</td><td class="type-col">REAL</td><td>dailyVol</td><td>Today's turnover in ₹ Cr</td></tr>
+      <tr><td>closePos</td><td class="type-col">REAL</td><td>closePos</td><td>Close position within day range (0=low, 1=high)</td></tr>
+      <tr class="group-hdr"><td colspan="4">STAGE + SCORES</td></tr>
+      <tr><td>stage</td><td class="type-col">TEXT</td><td>stage</td><td><code>post_cross</code> / <code>pre_cross</code> / <code>breakout</code> / <code>coiling</code> / <code>pullback</code> / <code>trending</code> / <code>none</code></td></tr>
+      <tr><td>score</td><td class="type-col">INTEGER</td><td>score</td><td>Composite score (F + T + Signal, max 73)</td></tr>
+      <tr><td>fScore</td><td class="type-col">INTEGER</td><td>fScore</td><td>Fundamental score (PE + D/E tiers, max 21)</td></tr>
+      <tr><td>tScore</td><td class="type-col">INTEGER</td><td>tScore</td><td>Technical score (RSI + ADX, max 22)</td></tr>
+      <tr><td>cScore / ctScore / lScore</td><td class="type-col">INTEGER</td><td>cScore / ctScore / lScore</td><td>Catalyst, catalyst-trend, lifecycle sub-scores</td></tr>
+      <tr><td>sigScore</td><td class="type-col">REAL</td><td>sigScore</td><td>Signal quality score (EMA cross + VPB quality)</td></tr>
+      <tr class="group-hdr"><td colspan="4">UPSIDE TARGET</td></tr>
+      <tr><td>targetPrice / targetType</td><td class="type-col">REAL / TEXT</td><td>targetPrice / targetType</td><td>MM target price; type = <code>52W</code> / <code>ATH</code> / <code>MM</code></td></tr>
+      <tr><td>mmTarget</td><td class="type-col">REAL</td><td>mmTarget</td><td>Market Maker target (range height projection)</td></tr>
+      <tr><td>upsidePct / upsideRs</td><td class="type-col">REAL</td><td>upsidePct / upsideRs</td><td>% and ₹ upside to target</td></tr>
+      <tr><td>mmConditional</td><td class="type-col">INTEGER</td><td>mmConditional (bool)</td><td>1 if target is conditional on breakout confirmation</td></tr>
+      <tr class="group-hdr"><td colspan="4">COMPLEX FIELDS (stored as JSON text)</td></tr>
+      <tr><td>catalysts</td><td class="type-col">TEXT (JSON)</td><td>catalysts[]</td><td>Array of catalyst strings for this stock</td></tr>
+      <tr><td>srResistance</td><td class="type-col">TEXT (JSON)</td><td>srResistance[]</td><td>Array of <code>{price, strength}</code> resistance levels</td></tr>
+      <tr><td>srSupport</td><td class="type-col">TEXT (JSON)</td><td>srSupport[]</td><td>Array of <code>{price, strength}</code> support levels</td></tr>
+      <tr><td>prevStages</td><td class="type-col">TEXT (JSON)</td><td>prevStages{}</td><td>Stage at d-5, d-10, d-20 lookback points</td></tr>
+      <tr class="group-hdr"><td colspan="4">META</td></tr>
+      <tr><td>data_source</td><td class="type-col">TEXT</td><td>data_source</td><td><code>kite</code> — source of OHLCV data</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- evals_signals -->
+<div class="schema-wrap">
+  <h3>TABLE: evals_signals &nbsp;—&nbsp; one row per signal cycle &nbsp;·&nbsp; 4,680 rows currently &nbsp;·&nbsp; grows ~10–30 rows/day at EOD</h3>
+  <table class="schema-table">
+    <thead>
+      <tr><th>Column</th><th>SQLite Type</th><th>Source field (signals_log.json)</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr class="group-hdr"><td colspan="4">PRIMARY KEY</td></tr>
+      <tr class="pk-row">
+        <td>id</td><td class="type-col">TEXT PRIMARY KEY</td><td>id</td><td>Format: <code>TICKER_YYYY-MM-DD</code> e.g. <code>RELIANCE_2026-03-24</code></td>
+      </tr>
+      <tr class="group-hdr"><td colspan="4">SIGNAL IDENTITY</td></tr>
+      <tr><td>ticker</td><td class="type-col">TEXT NOT NULL</td><td>ticker</td><td>NSE symbol</td></tr>
+      <tr><td>name / sector</td><td class="type-col">TEXT</td><td>name / sector</td><td>Company info at signal creation time</td></tr>
+      <tr><td>day0</td><td class="type-col">TEXT</td><td>day0</td><td>Date the signal was first logged (ISO)</td></tr>
+      <tr><td>source</td><td class="type-col">TEXT</td><td>source</td><td><code>auto</code> (EOD pipeline) or <code>manual</code> (user-added via /api/evals/log)</td></tr>
+      <tr class="group-hdr"><td colspan="4">TIER</td></tr>
+      <tr><td>tier</td><td class="type-col">TEXT</td><td>tier</td><td><code>signal</code> = top-3 per stage (shown in UI) · <code>baseline</code> = all others (tracked, not shown)</td></tr>
+      <tr><td>tier_date</td><td class="type-col">TEXT</td><td>tier_date</td><td>Date tier was last assigned — used to align price history display</td></tr>
+      <tr class="group-hdr"><td colspan="4">SNAPSHOT AT DAY 0</td></tr>
+      <tr><td>stage</td><td class="type-col">TEXT</td><td>stage</td><td>Stage at time of signal logging</td></tr>
+      <tr><td>score / fScore / tScore / sigScore</td><td class="type-col">INTEGER / REAL</td><td>score / fScore / tScore / sigScore</td><td>Scores captured at day 0</td></tr>
+      <tr><td>rsi / adx / pe / mcap / board</td><td class="type-col">REAL / INTEGER / TEXT</td><td>rsi / adx / pe / mcap / board</td><td>Technicals + fundamentals snapshot</td></tr>
+      <tr><td>vpbScore / vpbDetail / crossScore</td><td class="type-col">INTEGER / TEXT</td><td>vpbScore / vpbDetail / crossScore</td><td>VPB + EMA cross signals at day 0</td></tr>
+      <tr><td>emaPreCross / emaCross / emaPullback</td><td class="type-col">INTEGER (bool)</td><td>(bool fields)</td><td>EMA signal flags stored as 0/1</td></tr>
+      <tr><td>volConfirm / priceCoiling / volShrinking</td><td class="type-col">INTEGER (bool)</td><td>(bool fields)</td><td>Volume + price structure flags</td></tr>
+      <tr><td>deFlag / roeFlag</td><td class="type-col">TEXT</td><td>deFlag / roeFlag</td><td>D/E and ROE quality labels at day 0</td></tr>
+      <tr><td>price_d0 / nifty_d0</td><td class="type-col">REAL</td><td>price_d0 / nifty_d0</td><td>Stock and NIFTY price at signal date (for return calculation)</td></tr>
+      <tr class="group-hdr"><td colspan="4">OUTCOME</td></tr>
+      <tr><td>outcome</td><td class="type-col">TEXT</td><td>outcome</td><td><code>OPEN</code> / <code>HIT</code> (≥+15%) / <code>STOP</code> (≤−9%) / <code>EXPIRED</code> (day 60)</td></tr>
+      <tr><td>outcome_day</td><td class="type-col">INTEGER</td><td>outcome_day</td><td>Number of trading days to outcome (NULL while OPEN)</td></tr>
+      <tr><td>outcome_price / outcome_ret</td><td class="type-col">REAL</td><td>outcome_price / outcome_ret</td><td>Price and % return at outcome (NULL while OPEN)</td></tr>
+      <tr class="group-hdr"><td colspan="4">HISTORY (JSON text)</td></tr>
+      <tr><td>prev_stages</td><td class="type-col">TEXT (JSON)</td><td>prev_stages{}</td><td>Stage at d-5, d-10, d-20 before signal date</td></tr>
+      <tr><td>stage_history</td><td class="type-col">TEXT (JSON)</td><td>stage_history[]</td><td>Array of <code>{date, stage, day_n}</code> — full stage path after signal</td></tr>
+      <tr><td>retrigger_dates</td><td class="type-col">TEXT (JSON)</td><td>retrigger_dates[]</td><td>Dates signal re-entered the stage after exiting</td></tr>
+      <tr><td>daily_snapshots</td><td class="type-col">TEXT (JSON)</td><td>daily_snapshots{}</td><td>Full technical snapshot per trading day — 50+ fields per day. Used by EVALS analytics to compute checkpoint returns</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- evals_daily_prices -->
+<div class="schema-wrap">
+  <h3>TABLE: evals_daily_prices &nbsp;—&nbsp; one row per (signal, trading_date) &nbsp;·&nbsp; 30,308 rows currently &nbsp;·&nbsp; normalised from prices{} dicts in signals_log</h3>
+  <table class="schema-table">
+    <thead>
+      <tr><th>Column</th><th>SQLite Type</th><th>Source</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr class="pk-row"><td>signal_id</td><td class="type-col">TEXT NOT NULL</td><td>signals_log → id</td><td>FK → evals_signals.id</td></tr>
+      <tr class="pk-row"><td>trading_date</td><td class="type-col">TEXT NOT NULL</td><td>signals_log → prices{} keys</td><td>ISO date (PRIMARY KEY with signal_id)</td></tr>
+      <tr><td>price</td><td class="type-col">REAL</td><td>signals_log → prices[date]</td><td>Stock close price on this date</td></tr>
+      <tr><td>nifty_price</td><td class="type-col">REAL</td><td>signals_log → nifty_prices[date]</td><td>NIFTY 50 close on this date (NULL if not recorded)</td></tr>
+    </tbody>
+  </table>
+  <div style="margin-top:8px;font-size:10px;color:var(--muted2)">Purpose: enables per-signal return charts and checkpoint return queries (D7, D14, D21, D30) without loading the full daily_snapshots JSON blob.</div>
+</div>
+
+<!-- nifty_eod -->
+<div class="schema-wrap">
+  <h3>TABLE: nifty_eod &nbsp;—&nbsp; one row per trading date &nbsp;·&nbsp; sparse currently (from nifty_prices dicts) &nbsp;·&nbsp; will grow as DB matures</h3>
+  <table class="schema-table">
+    <thead>
+      <tr><th>Column</th><th>SQLite Type</th><th>Source</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr class="pk-row"><td>trading_date</td><td class="type-col">TEXT PRIMARY KEY</td><td>nifty_prices{} keys</td><td>ISO date e.g. <code>2026-04-10</code></td></tr>
+      <tr><td>close</td><td class="type-col">REAL</td><td>nifty_prices{} values</td><td>NIFTY 50 closing value on this date</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<hr class="sep">
+<h2>SERVER API — DB-POWERED ENDPOINTS</h2>
+
+<div class="row">
+  <div class="box sqlite">
+    <div class="box-title">GET /api/stocks?tab=X &nbsp;<span class="badge api">NEW</span></div>
+    <div style="margin-bottom:10px;font-size:11px;color:var(--muted)">
+      Accepts <code>tab</code> query param: <code>all</code> · <code>breakout</code> · <code>coiling</code> · <code>pre_cross</code> · <code>post_cross</code> · <code>pullback</code> · <code>trending</code> · <code>none</code>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div>
+        <div style="color:var(--sqlite);font-size:9px;letter-spacing:1px;margin-bottom:6px">WHEN tab IS ABSENT OR "all"</div>
+        <div class="item"><div class="dot m"></div><div>Returns full in-memory state: all 2,562 stocks</div></div>
+        <div class="item"><div class="dot m"></div><div>Same as original <code>/api/stocks</code> — no DB query</div></div>
+        <div class="item"><div class="dot m"></div><div>Payload: ~7.38 MB</div></div>
+      </div>
+      <div>
+        <div style="color:var(--sqlite);font-size:9px;letter-spacing:1px;margin-bottom:6px">WHEN tab IS A STAGE NAME</div>
+        <div class="item"><div class="dot s"></div><div>① Query DB: <code>SELECT ticker FROM eod_snapshots WHERE trading_date=(SELECT MAX…) AND stage=?</code></div></div>
+        <div class="item"><div class="dot s"></div><div>② Filter in-memory <code>state['stocks']</code> to matching tickers</div></div>
+        <div class="item"><div class="dot s"></div><div>③ Returns subset with all fields intact (including chartPrices/chartDates for charts)</div></div>
+        <div class="item"><div class="dot s"></div><div>Payload: ~50–200 KB depending on stage</div></div>
+        <div class="item"><div class="dot m"></div><div>Fallback: if DB missing → in-memory <code>stock.stage === tab</code> filter</div></div>
+      </div>
+    </div>
+    <div style="margin-top:12px;background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:10px 14px">
+      <div style="font-size:9px;color:var(--muted2);letter-spacing:1px;margin-bottom:6px">ALWAYS IN EVERY RESPONSE (both tab and non-tab)</div>
+      <div class="item"><div class="dot s"></div><div><strong>stage_counts</strong> — <code>{"breakout":98,"coiling":314,"post_cross":240,...}</code> — full universe counts, not filtered by tab</div></div>
+      <div class="item"><div class="dot s"></div><div><strong>total_count</strong> — total stocks in scan (2,562)</div></div>
+      <div class="item"><div class="dot s"></div><div><strong>tab</strong> — echoed back when a tab param was given, so frontend knows what was returned</div></div>
+    </div>
+  </div>
+</div>
+
+<div style="height:12px"></div>
+<div class="row">
+  <div class="box grey" style="flex:0 0 480px">
+    <div class="box-title">EXISTING ENDPOINTS (unchanged)</div>
+    <div class="item"><div class="dot p"></div><div><code>GET /api/evals</code> → reads signals_log.json directly (not DB)</div></div>
+    <div class="item"><div class="dot p"></div><div><code>GET /api/evals/analytics</code> → reads data/evals/analytics.json directly</div></div>
+    <div class="item"><div class="dot p"></div><div><code>GET /api/lifecycle</code> → reads lifecycle_log.json directly</div></div>
+    <div class="item"><div class="dot m"></div><div>DB is an additive layer — no existing endpoints were modified</div></div>
+  </div>
+  <div class="box sqlite2" style="flex:1">
+    <div class="box-title">DB HELPER — db_tickers_for_tab(tab)</div>
+    <div class="item"><div class="dot s"></div><div>Opens DB in <strong>read-only mode</strong> (<code>?mode=ro</code> URI) — cannot accidentally corrupt data during a read</div></div>
+    <div class="item"><div class="dot s"></div><div>SQLite WAL mode — concurrent reads safe even while db_writer is mid-write</div></div>
+    <div class="item"><div class="dot s"></div><div>Returns <code>None</code> on any error → server falls back to in-memory filter gracefully</div></div>
+    <div class="item"><div class="dot s"></div><div>Called per request — no connection pool needed (SQLite handles concurrency fine at this scale)</div></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<hr class="sep">
+<h2>FRONTEND — HOW PER-TAB FETCH WORKS</h2>
+
+<div class="row">
+  <div class="box green">
+    <div class="box-title">TWO-VARIABLE DESIGN</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:6px">
+      <div>
+        <div style="color:var(--green);font-size:10px;margin-bottom:6px">planStocks (full universe)</div>
+        <div class="item"><div class="dot g"></div><div>Set once per full <code>/api/stocks</code> load (startup + polling refreshes)</div></div>
+        <div class="item"><div class="dot g"></div><div>Always 2,562 stocks — never replaced by tab fetches</div></div>
+        <div class="item"><div class="dot g"></div><div>Used by: <strong>Plan view</strong> (stage pipeline counts, strong tiles), <strong>Search</strong> (ticker autocomplete), <strong>Watchlist</strong>, <strong>Score view</strong>, <strong>Strategy</strong>, <strong>Sector PE</strong>, <strong>Stage modal</strong>, <strong>Compare / Change detection</strong></div></div>
+      </div>
+      <div>
+        <div style="color:var(--blue);font-size:10px;margin-bottom:6px">allStocks (current tab's slice)</div>
+        <div class="item"><div class="dot b"></div><div>Replaced on every tab switch via <code>fetchTab(stage)</code></div></div>
+        <div class="item"><div class="dot b"></div><div>On "ALL" tab: restored from <code>planStocks</code> (no fetch needed)</div></div>
+        <div class="item"><div class="dot b"></div><div>Used by: <strong>Scanner table only</strong> — the <code>vs()</code> MCap filter, table rows, sort, pagination</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="height:12px"></div>
+<div class="row">
+  <div class="box grey">
+    <div class="box-title">TAB SWITCH SEQUENCE</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:6px">
+      <div>
+        <div style="color:var(--muted2);font-size:9px;letter-spacing:1px;margin-bottom:6px">① USER CLICKS TAB</div>
+        <div class="item"><div class="dot m"></div><div><code>setStage('breakout')</code> called</div></div>
+        <div class="item"><div class="dot m"></div><div>Sets <code>activeStage = 'breakout'</code></div></div>
+        <div class="item"><div class="dot m"></div><div>Calls <code>fetchTab('breakout')</code></div></div>
+      </div>
+      <div>
+        <div style="color:var(--sqlite);font-size:9px;letter-spacing:1px;margin-bottom:6px">② FETCH</div>
+        <div class="item"><div class="dot s"></div><div><code>GET /api/stocks?tab=breakout</code></div></div>
+        <div class="item"><div class="dot s"></div><div>Server queries DB → 98 tickers</div></div>
+        <div class="item"><div class="dot s"></div><div>Filters in-memory state → 98 full records</div></div>
+        <div class="item"><div class="dot s"></div><div>Returns ~50 KB JSON</div></div>
+      </div>
+      <div>
+        <div style="color:var(--blue);font-size:9px;letter-spacing:1px;margin-bottom:6px">③ UPDATE STATE</div>
+        <div class="item"><div class="dot b"></div><div><code>allStocks = d.stocks</code> (98 items)</div></div>
+        <div class="item"><div class="dot b"></div><div><code>planStocks</code> untouched</div></div>
+        <div class="item"><div class="dot b"></div><div><code>serverStageCounts</code> updated from response</div></div>
+      </div>
+      <div>
+        <div style="color:var(--green);font-size:9px;letter-spacing:1px;margin-bottom:6px">④ RENDER</div>
+        <div class="item"><div class="dot g"></div><div><code>renderStages()</code> called</div></div>
+        <div class="item"><div class="dot g"></div><div>Tab badges use <code>serverStageCounts</code> (full counts)</div></div>
+        <div class="item"><div class="dot g"></div><div>Table rows from <code>allStocks</code> (98 items)</div></div>
+        <div class="item"><div class="dot g"></div><div>No JS filter needed — data is pre-filtered</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="height:12px"></div>
+<div class="row">
+  <div class="box sqlite2">
+    <div class="box-title">serverStageCounts — WHY IT MATTERS</div>
+    <div style="font-size:11px;color:var(--muted);line-height:1.7">
+      When <code>allStocks</code> holds only 98 breakout stocks, a count like <code>allStocks.filter(s=>s.stage==='coiling').length</code> would return <strong>0</strong> — because coiling stocks aren't in <code>allStocks</code> anymore. The tab badges (<em>POST-CROSS 240 · PRE-CROSS 1 · BREAKOUT 98 ...</em>) would all show 0 except for the active tab.
+      <br><br>
+      <code>serverStageCounts</code> is populated from the <code>stage_counts</code> field that every <code>/api/stocks</code> response now includes. It always reflects the full universe, so the badges are always correct regardless of which tab is active or what's in <code>allStocks</code>.
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<hr class="sep">
+<h2>FILES ADDED / MODIFIED</h2>
+<div class="row">
+  <div class="box grey">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div>
+        <div style="color:var(--sqlite);font-size:9px;letter-spacing:1px;margin-bottom:8px">NEW FILES</div>
+        <div class="item"><div class="dot s"></div><div><strong>db_writer.py</strong> — eod_snapshots writer. Run as <code>python db_writer.py</code> or via orchestrator <code>--eod</code></div></div>
+        <div class="item"><div class="dot s"></div><div><strong>evals_db_writer.py</strong> — evals_signals + evals_daily_prices + nifty_eod writer</div></div>
+        <div class="item"><div class="dot s"></div><div><strong>data/dalal_street.db</strong> — the SQLite database (WAL mode, gitignored for size)</div></div>
+        <div class="item"><div class="dot s"></div><div><strong>architecture_db.html</strong> — this page</div></div>
+      </div>
+      <div>
+        <div style="color:var(--gold);font-size:9px;letter-spacing:1px;margin-bottom:8px">MODIFIED FILES</div>
+        <div class="item"><div class="dot o"></div><div><strong>orchestrator.py</strong> — added Steps B (evals_db_writer after lifecycle_worker) and A (db_writer after YF patch), both under <code>--eod</code> flag</div></div>
+        <div class="item"><div class="dot o"></div><div><strong>server.py</strong> — added <code>sqlite3</code> import, <code>DB_FILE</code> path, <code>db_tickers_for_tab()</code> helper, <code>?tab=X</code> branch in <code>/api/stocks</code>, <code>stage_counts</code> + <code>total_count</code> in response, <code>stage_counts</code> in state</div></div>
+        <div class="item"><div class="dot o"></div><div><strong>index.html</strong> — added <code>planStocks</code>, <code>serverStageCounts</code>, <code>fetchTab()</code>, updated <code>setStage()</code> / <code>navToStage()</code> / <code>switchTab()</code>, updated 15+ usages of <code>allStocks</code> to use <code>planStocks</code> for non-scanner views</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<hr class="sep">
+<h2>ROLLBACK INSTRUCTIONS</h2>
+<div class="callout">
+  <strong>Pre-DB backups</strong> are committed in the repo root: <code>orchestrator_pre_db.py</code>, <code>server_pre_db.py</code>, <code>index_pre_db.html</code> — all saved at commit <code>53336f7</code> (v12) before any DB changes.<br><br>
+  To fully roll back: copy the <code>_pre_db</code> files back to their originals, delete <code>db_writer.py</code>, <code>evals_db_writer.py</code>, and <code>data/dalal_street.db</code>. The system returns to pure JSON-file operation with no other changes needed.
+</div>
+
+<div style="height:40px"></div>
+</body>
+</html>
