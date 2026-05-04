@@ -6682,6 +6682,11 @@ function renderEvStock() {
         return `<td style="border-bottom:1px solid var(--border);border-right:1px solid var(--border2);width:${W_DAY}px;min-width:${W_DAY}px;max-width:${W_DAY}px;background:rgba(0,0,0,0.015)"></td>`;
       }
 
+      // Stop displaying after outcome day for WIN/LOSS signals
+      if (sig.outcome !== 'OPEN' && sig.outcome_day != null && i > sig.outcome_day) {
+        return `<td style="border-bottom:1px solid var(--border);border-right:1px solid var(--border2);width:${W_DAY}px;min-width:${W_DAY}px;max-width:${W_DAY}px;background:rgba(0,0,0,0.015)"></td>`;
+      }
+
       const price = sig.prices[dateStr];
       const ret   = i === 0 ? null : (p0 ? +((price - p0) / p0 * 100).toFixed(1) : null);
       const stage = evStageAtDay(sig, dateStr);
