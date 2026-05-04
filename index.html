@@ -6643,14 +6643,6 @@ function renderEvStock() {
   const dayHeaders = Array.from({length: maxDays}, (_, i) => thDay(i)).join('');
 
   // ── Rows ─────────────────────────────────────────────────────────────
-  // Filter out resolved signals with no visible days after tier_date
-  sigs = sigs.filter(sig => {
-    if (sig.outcome === 'OPEN') return true;
-    const tierDate = sig.tier_date || sig.day0;
-    const days = evDays(sig).filter(d => d >= tierDate);
-    return days.length > 0;
-  });
-
   const rows = sigs.map(sig => {
     const tierDate = sig.tier_date || sig.day0;
     const days = evDays(sig).filter(d => d >= tierDate);
@@ -6680,6 +6672,14 @@ function renderEvStock() {
       <div style="${FH};font-size:9px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3">${sig.ticker}${badge}</div>
       <div style="${FM};font-size:6.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3"><span style="color:${entryStageColor}">${entryStageShort}</span>·${(sig.tier_date||sig.day0).slice(5)}</div>
     </td>`;
+
+    // ── No visible days: resolved before/on tier_date ─────────────────
+    if (days.length === 0 && sig.outcome !== 'OPEN') {
+      const outcomeCol = sig.outcome === 'WIN' ? '#00c853' : sig.outcome === 'LOSS' ? '#ff1744' : 'var(--muted2)';
+      const outcomeLabel = sig.outcome === 'WIN' ? `WIN ${sig.outcome_ret!=null?'+'+sig.outcome_ret.toFixed(1)+'%':''}` : sig.outcome === 'LOSS' ? `LOSS ${sig.outcome_ret!=null?sig.outcome_ret.toFixed(1)+'%':''}` : 'EXPIRED';
+      const emptyCell = `<td colspan="${maxDays}" style="padding:2px 6px;border-bottom:1px solid var(--border);font-family:var(--fm);font-size:8px;font-weight:700;color:${outcomeCol};opacity:0.7">${outcomeLabel} · resolved before Stock-Wise entry</td>`;
+      return `<tr>${stockCell}${emptyCell}</tr>`;
+    }
 
     // ── Day cells ──────────────────────────────────────────────────────
     let prevStage = null;
