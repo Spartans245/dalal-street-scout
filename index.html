@@ -6624,10 +6624,10 @@ function renderEvStock() {
   if (!_evShowAll && sigs.length > DISPLAY_LIMIT) sigs = sigs.slice(0, DISPLAY_LIMIT);
 
   // Max trading days across all visible signals
-  // Resolved signals use all days from day0; open signals from tier_date
+  // All signals show days from tier_date
   const maxDays = Math.max(21, Math.max(...sigs.map(s => {
     const td = s.tier_date || s.day0;
-    return s.outcome !== 'OPEN' ? evDays(s).length : evDays(s).filter(d => d >= td).length;
+    return evDays(s).filter(d => d >= td).length;
   })));
 
   // ── Dimensions — fill available width exactly ────────────────────────
@@ -6645,11 +6645,8 @@ function renderEvStock() {
   // ── Rows ─────────────────────────────────────────────────────────────
   const rows = sigs.map(sig => {
     const tierDate = sig.tier_date || sig.day0;
-    // For resolved signals use all days from day0 (tier_date may be after outcome_day)
-    // For open signals filter from tier_date so matrix starts at Stock-Wise entry
-    const days = sig.outcome !== 'OPEN'
-      ? evDays(sig)
-      : evDays(sig).filter(d => d >= tierDate);
+    // Always filter from tier_date — outcome is computed from tier_date baseline
+    const days = evDays(sig).filter(d => d >= tierDate);
     const p0   = (days.length ? sig.prices[days[0]] : 0) || sig.price_d0;
 
     // Outcome badge — micro pill after ticker
