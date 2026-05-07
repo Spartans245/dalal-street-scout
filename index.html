@@ -7,17 +7,56 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg:#eef0f7; --s1:#ffffff; --s2:#f5f6fa; --s3:#e8eaf2;
-  --border:#d4d8e8; --border2:#b8bdd0;
-  --text:#1a1f36; --muted:#4a5270; --muted2:#8890aa;
-  --green:#15803d; --red:#dc2626; --gold:#b45309; --blue:#2563eb;
-  --greenglow:rgba(21,128,61,0.10); --redglow:rgba(220,38,38,0.10);
-  --goldglow:rgba(180,83,9,0.10); --blueglow:rgba(37,99,235,0.10);
+  --bg:#f7f8fa; --s1:#ffffff; --s2:#f4f5f7; --s3:#ebecf0;
+  --border:#ebecf0; --border2:#c1c7d0;
+  --text:#172b4d; --muted:#42526e; --muted2:#6b778c;
+  --green:#15803d; --red:#de350b; --gold:#b45309; --blue:#0052cc;
+  --greenglow:rgba(21,128,61,0.10); --redglow:rgba(222,53,11,0.10);
+  --goldglow:rgba(180,83,9,0.10); --blueglow:rgba(0,82,204,0.10);
   --header-bg:#1a1f36; --header-text:#e8eaf2; --header-muted:#8890aa;
-  --fm:'JetBrains Mono',monospace; --fb:'Inter',sans-serif; --fh:'Inter',sans-serif;
+  --fm:'Inter','Segoe UI',sans-serif; --fb:'Inter','Segoe UI',sans-serif; --fh:'Inter','Segoe UI',sans-serif;
+  --fmono:'Consolas','Menlo','JetBrains Mono',monospace;
+  /* Stage colours — light mode */
+  --c-postcross:#15803d; --c-precross:#b45309; --c-breakout:#0052cc;
+  --c-pullback:#1547c0; --c-trending:#5a32b0; --c-coiling:#6b778c;
+  /* Score bar colours */
+  --c-fscore:var(--gold); --c-tscore:var(--blue);
+  /* Chart/SVG background */
+  --c-chart-bg:#f0f4f8;
+}
+body.dark {
+  --bg:#1e1e1e; --s1:#252525; --s2:#252525; --s3:#2d2d2d;
+  --border:#2d2d2d; --border2:#383838;
+  --text:#ffffff; --muted:#ffffff; --muted2:#999999;
+  --green:#27ae60; --red:#e74c3c; --gold:#ffffff; --blue:#ffffff;
+  --greenglow:rgba(39,174,96,0.12); --redglow:rgba(231,76,60,0.12);
+  --goldglow:rgba(255,255,255,0.08); --blueglow:rgba(255,255,255,0.08);
+  --header-bg:#161616; --header-text:#ffffff; --header-muted:#999999;
+  --c-postcross:#ffffff; --c-precross:#ffffff; --c-breakout:#ffffff;
+  --c-pullback:#ffffff; --c-trending:#ffffff; --c-coiling:#999999;
+  /* Score bar colours — white in dark mode */
+  --c-fscore:#ffffff; --c-tscore:#ffffff;
+  /* Chart/SVG background — match dark surface */
+  --c-chart-bg:#252525;
+}
+body.dark tbody tr:nth-child(even) { background:transparent; }
+body.dark tbody tr:hover { background:rgba(255,255,255,0.04); }
+body.dark input, body.dark select, body.dark textarea {
+  background:var(--s2); color:var(--text); border-color:var(--border);
+}
+body.dark .fsel { background:var(--s2); color:var(--text); border-color:var(--border); }
+
+/* Dark mode: all stage badges / tags become white text on neutral dark bg */
+body.dark .tag,
+body.dark span[style*="background:rgba"][style*="border:1px solid"],
+body.dark span[style*="background:#"][style*="border:1px solid"],
+body.dark div[style*="background:rgba"][style*="border:1px solid rgba"] {
+  background:rgba(255,255,255,0.08) !important;
+  border-color:rgba(255,255,255,0.2) !important;
+  color:#ffffff !important;
 }
 *{margin:0;padding:0;box-sizing:border-box;}
-body{background:var(--bg);color:var(--text);font-family:var(--fb);font-size:13px;min-height:100vh;overflow-x:hidden;}
+body{background:var(--bg);color:var(--text);font-family:var(--fb);font-size:14px;min-height:100vh;overflow-x:hidden;}
 
 /* HEADER */
 header{position:sticky;top:0;z-index:200;background:var(--header-bg);border-bottom:none;box-shadow:0 2px 8px rgba(0,0,0,0.18);padding:0 20px;height:44px;display:flex;align-items:center;justify-content:space-between;}
@@ -63,7 +102,7 @@ header{position:sticky;top:0;z-index:200;background:var(--header-bg);border-bott
 .fstat-l{font-size:10px;color:var(--muted);margin-top:2px;}
 
 /* MODE STRIP */
-.mstrip{padding:4px 20px;border-bottom:1px solid var(--border);font-family:var(--fm);font-size:10px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.mstrip{padding:4px 20px;border-bottom:1px solid var(--border);font-family:var(--fb);font-size:11px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
 .mstrip.live{color:var(--green);}
 .mstrip.eod{color:var(--muted);}
 .mstrip.err{color:var(--red);}
@@ -72,7 +111,7 @@ header{position:sticky;top:0;z-index:200;background:var(--header-bg);border-bott
 .layout{display:flex;min-height:calc(100vh - 44px);}
 .sidebar{width:160px;min-width:160px;background:var(--s1);border-right:1px solid var(--border);box-shadow:1px 0 4px rgba(0,0,0,0.06);display:flex;flex-direction:column;position:sticky;top:44px;height:calc(100vh - 44px);overflow-y:auto;flex-shrink:0;}
 .nav-section{padding:6px 0;border-bottom:1px solid var(--border);}
-.nav-item{padding:9px 16px;font-size:12px;font-weight:500;color:var(--muted);cursor:pointer;user-select:none;white-space:nowrap;transition:color 0.1s,background 0.1s;border-left:3px solid transparent;}
+.nav-item{padding:9px 16px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;user-select:none;white-space:nowrap;transition:color 0.1s,background 0.1s;border-left:3px solid transparent;font-family:var(--fb);}
 .nav-item:hover{color:var(--text);background:var(--s2);}
 .nav-item.active{color:var(--blue);background:rgba(21,71,192,0.06);border-left-color:var(--blue);font-weight:600;}
 .mcap-section{padding:10px 12px 8px;}
@@ -122,12 +161,12 @@ header{position:sticky;top:0;z-index:200;background:var(--header-bg);border-bott
 .cii{font-size:13px;flex-shrink:0;}
 
 /* SECTION TITLE */
-.stitle{font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
+.stitle{font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:var(--muted2);margin-bottom:8px;font-family:var(--fb);}
 
 /* FILTER BAR */
 .fbar{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center;}
-.fl{font-family:var(--fm);font-size:10px;color:var(--muted2);letter-spacing:0.3px;}
-.fsel{background:var(--s2);border:1px solid var(--border);color:var(--text);padding:4px 7px;border-radius:3px;font-family:var(--fm);font-size:11px;cursor:pointer;outline:none;}
+.fl{font-family:var(--fb);font-size:11px;color:var(--muted2);letter-spacing:0;}
+.fsel{background:var(--s1);border:1px solid var(--border2);color:var(--text);padding:4px 8px;border-radius:3px;font-family:var(--fb);font-size:12px;cursor:pointer;outline:none;}
 .fsel:focus{border-color:var(--border2);}
 .msw{display:flex;align-items:center;gap:4px;background:var(--s2);border:1px solid var(--border);border-radius:3px;padding:3px 7px;}
 .msw input{background:none;border:none;color:var(--gold);font-family:var(--fm);font-size:13px;width:40px;outline:none;}
@@ -136,13 +175,13 @@ header{position:sticky;top:0;z-index:200;background:var(--header-bg);border-bott
 .twrap{background:var(--s1);border:1px solid var(--border);border-radius:4px;overflow:hidden;overflow-x:auto;box-shadow:0 1px 4px rgba(0,0,0,0.07);}
 table{width:100%;border-collapse:collapse;min-width:1040px;}
 thead tr{background:var(--s3);border-bottom:2px solid var(--border2);}
-th{padding:7px 10px;text-align:left;font-family:var(--fm);font-size:10px;color:var(--muted);letter-spacing:0.3px;text-transform:uppercase;white-space:nowrap;cursor:pointer;font-weight:600;}
+th{padding:7px 10px;text-align:left;font-family:var(--fb);font-size:11px;color:var(--muted2);letter-spacing:0.2px;text-transform:uppercase;white-space:nowrap;cursor:pointer;font-weight:600;}
 th:hover{color:var(--text);}
 tbody tr{border-bottom:1px solid var(--border);cursor:pointer;}
-tbody tr:nth-child(even){background:#f8f9fc;}
+tbody tr:nth-child(even){background:var(--s2);}
 tbody tr:last-child{border-bottom:none;}
 tbody tr:hover{background:rgba(21,71,192,0.04);}
-td{padding:5px 10px;font-size:12px;white-space:nowrap;}
+td{padding:6px 10px;font-size:13px;white-space:nowrap;font-family:var(--fb);}
 .tn{font-size:13px;font-weight:600;}
 .ts{font-family:var(--fm);font-size:10px;color:var(--muted);margin-top:1px;}
 .mono{font-family:var(--fm);}
@@ -190,6 +229,10 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
 .mrow:last-child{border-bottom:none;}
 .mrl{font-size:11px;color:var(--muted);}
 .mrv{font-family:var(--fm);font-size:11px;}
+
+/* PIPELINE COLUMNS */
+.pipe-col{background:var(--s1);transition:background 0.15s;cursor:pointer;}
+.pipe-col:hover{background:var(--s2);}
 
 /* WATCHLIST */
 .wlrow{display:flex;gap:6px;margin-bottom:10px;}
@@ -318,6 +361,13 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
     <div id="istTime" style="display:none"></div>
   </div>
   <span id="refreshTxt" style="font-family:var(--fm);font-size:10px;color:var(--muted);display:none"></span>
+  <button id="themeToggle" onclick="toggleTheme()" title="Toggle dark/light mode"
+    style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:4px;
+           color:var(--header-text);font-family:var(--fm);font-size:11px;padding:4px 10px;
+           cursor:pointer;display:flex;align-items:center;gap:6px;letter-spacing:0.3px">
+    <span id="themeIcon">☀</span>
+    <span id="themeLabel">Light</span>
+  </button>
 </header>
 
 <div class="layout">
@@ -340,6 +390,7 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
     <div class="nav-item" id="nav-evals-analytics" onclick="switchTab('evals-analytics',this)">&#9654; Analytics</div>
     <div class="nav-item" id="nav-evals-lifecycle"   onclick="switchTab('evals-lifecycle',this)">&#9654; Lifecycle</div>
     <div class="nav-item" id="nav-evals-regression" onclick="switchTab('evals-regression',this)">&#9654; Regression</div>
+    <div class="nav-item" id="nav-qa"              onclick="switchTab('qa',this)">&#10003; QA</div>
   </div>
   <div class="nav-section">
     <div style="padding:8px 16px 4px;font-size:9px;letter-spacing:1.2px;color:var(--muted2);text-transform:uppercase;font-family:var(--fm)">Educational</div>
@@ -395,6 +446,14 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
       <button id="mseg-small" class="btn btn-ghost btn-sm mseg-btn" onclick="setMcap('small')" title="₹500 – 5,000 Cr">Small</button>
       <button id="mseg-mid"   class="btn btn-ghost btn-sm mseg-btn" onclick="setMcap('mid')"   title="₹5,000 – 20,000 Cr">Mid</button>
       <button id="mseg-large" class="btn btn-ghost btn-sm mseg-btn" onclick="setMcap('large')" title="&gt; ₹20,000 Cr">Large</button>
+    </div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+      <input id="scanSearch" type="text" placeholder="Search ticker or name…"
+        oninput="renderStages()"
+        onkeydown="if(event.key==='Escape'){this.value='';renderStages();}"
+        autocomplete="off"
+        style="font-family:var(--fb);font-size:12px;background:var(--s1);border:1px solid var(--border2);color:var(--text);padding:4px 10px;border-radius:4px;width:200px;outline:none;"
+        onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor='var(--border2)'">
     </div>
   </div>
   <span id="resCount" style="display:none">0</span>
@@ -529,7 +588,7 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
         <span style="font-family:var(--fm);font-size:10px;color:var(--muted)">Stage 1 of VPB · Watchlist only</span>
       </div>
       <!-- SVG: 6 candles narrowing + volume drying -->
-      <svg viewBox="0 0 260 118" style="width:100%;height:auto;margin-bottom:10px;border-radius:6px;background:#f0f4f8">
+      <svg viewBox="0 0 260 118" style="width:100%;height:auto;margin-bottom:10px;border-radius:6px;background:var(--c-chart-bg)">
         <!-- Grid lines -->
         <line x1="0" y1="82" x2="260" y2="82" stroke="#ffffff08" stroke-width="1"/>
         <!-- Candle 1 bearish big -->
@@ -577,7 +636,7 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
         <span style="font-family:var(--fm);font-size:10px;color:var(--muted)">Stage 2 of VPB · Small position</span>
       </div>
       <!-- SVG: 5 coiling + 1 big breakout candle -->
-      <svg viewBox="0 0 260 118" style="width:100%;height:auto;margin-bottom:10px;border-radius:6px;background:#f0f4f8">
+      <svg viewBox="0 0 260 118" style="width:100%;height:auto;margin-bottom:10px;border-radius:6px;background:var(--c-chart-bg)">
         <line x1="0" y1="82" x2="260" y2="82" stroke="#ffffff08" stroke-width="1"/>
         <!-- Coiling candles (same as above) -->
         <line x1="20" y1="12" x2="20" y2="72" stroke="#f87171" stroke-width="1.5"/>
@@ -707,7 +766,7 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
         <div style="border:1px solid var(--border);border-radius:3px;padding:2px 8px;font-family:var(--fm);font-size:10px;font-weight:600;color:var(--text)">PRE-CROSS</div>
         <span style="font-family:var(--fm);font-size:9px;color:var(--muted)">Partial entry</span>
       </div>
-      <svg viewBox="0 0 200 90" style="width:100%;height:auto;margin-bottom:10px;border-radius:6px;background:#f0f4f8">
+      <svg viewBox="0 0 200 90" style="width:100%;height:auto;margin-bottom:10px;border-radius:6px;background:var(--c-chart-bg)">
         <!-- EMA50 gold, nearly flat slightly down -->
         <polyline points="0,42 40,41 80,40 120,40 160,39 200,39" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="4,2"/>
         <!-- EMA14 blue, rising fast -->
@@ -757,7 +816,7 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
         <div style="border:1px solid var(--green);border-radius:3px;padding:2px 8px;font-family:var(--fm);font-size:10px;font-weight:600;color:var(--green)">POST-CROSS</div>
         <span style="font-family:var(--fm);font-size:9px;color:var(--muted)">Full position</span>
       </div>
-      <svg viewBox="0 0 200 90" style="width:100%;height:auto;margin-bottom:10px;border-radius:6px;background:#f0f4f8">
+      <svg viewBox="0 0 200 90" style="width:100%;height:auto;margin-bottom:10px;border-radius:6px;background:var(--c-chart-bg)">
         <!-- EMA50 gold, flat -->
         <polyline points="0,55 60,53 120,51 200,48" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="4,2"/>
         <!-- EMA14 blue, crosses above at x=100 -->
@@ -822,7 +881,7 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
         <span style="font-family:var(--fm);font-size:9px;color:var(--muted)">Re-entry / kiss-back</span>
       </div>
       <!-- Full timeline SVG: EMA50 gold, EMA14 blue, cross, surge, pullback, kiss, bounce -->
-      <svg viewBox="0 0 220 110" style="width:100%;max-width:220px;height:auto;margin-bottom:12px;border-radius:6px;background:#f0f4f8">
+      <svg viewBox="0 0 220 110" style="width:100%;max-width:220px;height:auto;margin-bottom:12px;border-radius:6px;background:var(--c-chart-bg)">
         <!-- EMA50 gold, gently rising -->
         <polyline points="0,75 40,73 80,71 110,69 160,67 220,65" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="4,2"/>
         <!-- EMA14 blue: approaches from below, crosses at x=80, rises, then flattens as price pulls back -->
@@ -905,7 +964,7 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
   <!-- ── CONCEPT 3: TRENDING ── -->
   <div style="font-family:var(--fm);font-size:10px;font-weight:600;letter-spacing:1px;color:var(--muted);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">CONCEPT 3 · TRENDING — WATCHING FOR AN ENTRY</div>
   <div style="background:var(--s1);border:1px solid var(--border);border-radius:4px;padding:16px;margin-bottom:20px;display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:start">
-    <svg viewBox="0 0 260 90" style="width:260px;height:auto;flex-shrink:0;border-radius:6px;background:#f0f4f8">
+    <svg viewBox="0 0 260 90" style="width:260px;height:auto;flex-shrink:0;border-radius:6px;background:var(--c-chart-bg)">
       <!-- EMA50 gold, sloping up -->
       <polyline points="0,70 50,64 100,57 150,51 200,46 260,42" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="4,2"/>
       <!-- EMA14 blue, above EMA50, sloping up -->
@@ -1386,7 +1445,7 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
         <!-- SVG: line graph of price oscillating in coiling range, then MM target above -->
         <!-- Scale: ₹440–₹640 (200₹ range) → y 20–170 (150px). 1₹ = 0.75px -->
         <!-- ₹624 → y=32  |  ₹542 → y=94  |  ₹460 → y=155 -->
-        <svg viewBox="0 0 280 205" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;border-radius:4px;background:#eef0f7;margin-bottom:12px">
+        <svg viewBox="0 0 280 205" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;border-radius:4px;background:var(--c-chart-bg);margin-bottom:12px">
           <!-- MM target dashed line -->
           <line x1="38" y1="32" x2="270" y2="32" stroke="#00c896" stroke-width="1.5" stroke-dasharray="6,3" opacity="0.85"/>
           <text x="40" y="26" font-family="monospace" font-size="11" fill="#00c896" font-weight="700">MM TARGET = ₹624</text>
@@ -1449,7 +1508,7 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
       <div style="background:var(--s1);border:1px solid var(--border);border-radius:4px;padding:16px">
         <div style="font-family:var(--fh);font-size:13px;letter-spacing:0.5px;color:var(--red);margin-bottom:4px">52W — 52-WEEK HIGH</div>
         <div style="font-family:var(--fm);font-size:10px;color:var(--muted2);margin-bottom:12px">Overhead resistance — official 1-year high from NSE &nbsp;·&nbsp; 2,738/2,749 stocks</div>
-        <svg viewBox="0 0 260 180" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;border-radius:4px;background:#eef0f7;margin-bottom:12px">
+        <svg viewBox="0 0 260 180" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;border-radius:4px;background:var(--c-chart-bg);margin-bottom:12px">
           <!-- 52W high resistance line -->
           <line x1="0" y1="50" x2="260" y2="50" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="7,4" opacity="0.75"/>
           <text x="6" y="44" fill="#dc2626" font-size="11" font-family="monospace" font-weight="700">52W HIGH — RESISTANCE</text>
@@ -1479,7 +1538,7 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
       <div style="background:var(--s1);border:1px solid var(--border);border-radius:4px;padding:16px">
         <div style="font-family:var(--fh);font-size:13px;letter-spacing:0.5px;color:var(--muted2);margin-bottom:4px">ATH(9M) — 9-MONTH HIGH</div>
         <div style="font-family:var(--fm);font-size:10px;color:var(--muted2);margin-bottom:12px">Used when price has already broken the 52W High</div>
-        <svg viewBox="0 0 260 180" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;border-radius:4px;background:#eef0f7;margin-bottom:12px">
+        <svg viewBox="0 0 260 180" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;border-radius:4px;background:var(--c-chart-bg);margin-bottom:12px">
           <!-- ATH(9M) ceiling -->
           <line x1="0" y1="30" x2="260" y2="30" stroke="#8890aa" stroke-width="1.5" stroke-dasharray="7,4" opacity="0.7"/>
           <text x="6" y="24" fill="#8890aa" font-size="11" font-family="monospace" font-weight="700">ATH (9M) — NEW CEILING</text>
@@ -1639,7 +1698,7 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
       <!-- Candlestick SVG — Swing High example -->
       <!-- Price range ₹280–₹325, y=190 at ₹280, y=30 at ₹325, scale=160/45=3.556px/₹ -->
       <!-- y(p) = 190 - (p-280)*3.556  | bar pitch=28, bar width=18 -->
-      <svg viewBox="0 0 460 238" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;border-radius:4px;background:#eef0f7;margin-bottom:8px">
+      <svg viewBox="0 0 460 238" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;border-radius:4px;background:var(--c-chart-bg);margin-bottom:8px">
 
         <!-- Window highlight bands -->
         <!-- 5 bars before: bars 1–5, x=63 to x=192 -->
@@ -1841,7 +1900,7 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
       <!-- SVG: clustered level illustration -->
       <div style="background:var(--s1);border:1px solid var(--border);border-radius:4px;padding:16px">
         <div style="font-family:var(--fh);font-size:12px;letter-spacing:0.5px;color:var(--text);margin-bottom:8px">CLUSTERING IN ACTION</div>
-        <svg viewBox="0 0 260 210" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;border-radius:4px;background:#eef0f7">
+        <svg viewBox="0 0 260 210" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;border-radius:4px;background:var(--c-chart-bg)">
           <!-- Resistance zone band at ~311 -->
           <rect x="0" y="56" width="260" height="12" fill="rgba(220,38,38,0.10)"/>
           <line x1="0" y1="62" x2="260" y2="62" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="6,3"/>
@@ -2893,14 +2952,21 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
   <!-- Compact summary strip + filters in one bar -->
   <div style="display:flex;align-items:center;gap:0;margin-bottom:5px;font-family:var(--fm);background:var(--s2);border:1px solid var(--border);border-radius:4px;overflow:hidden">
     <div style="display:flex;gap:0;flex:1;min-width:0">
+      <!-- Totals group -->
       <div style="padding:4px 10px;border-right:1px solid var(--border);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">SIGNALS</span><span id="evTotal" style="font-size:12px;font-weight:700">—</span></div>
-      <div style="padding:4px 10px;border-right:1px solid var(--border);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">WIN RATE</span><span id="evWinRate" style="font-size:12px;font-weight:700">—</span></div>
-      <div style="padding:4px 10px;border-right:1px solid var(--border);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">AVG RET D30</span><span id="evAvgRet" style="font-size:12px;font-weight:700">—</span></div>
-      <div style="padding:4px 10px;border-right:1px solid var(--border);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">AVG ALPHA</span><span id="evAvgAlpha" style="font-size:12px;font-weight:700">—</span></div>
-      <div style="padding:4px 10px;border-right:1px solid var(--border);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">BEST WIN</span><span id="evBest" style="font-size:12px;font-weight:700;color:var(--green)">—</span></div>
-      <div style="padding:4px 10px;border-right:1px solid var(--border);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">WORST LOSS</span><span id="evWorst" style="font-size:12px;font-weight:700;color:var(--red)">—</span></div>
-      <div style="padding:4px 10px;border-right:1px solid var(--border);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">AVG WIN DAY</span><span id="evAvgWinDay" style="font-size:12px;font-weight:700">—</span></div>
       <div style="padding:4px 10px;border-right:1px solid var(--border);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">OPEN</span><span id="evOpen" style="font-size:12px;font-weight:700">—</span></div>
+      <div style="padding:4px 10px;border-right:2px solid var(--border);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">RESOLVED</span><span id="evResolved" style="font-size:12px;font-weight:700">—</span></div>
+      <!-- Resolved-metrics group — all computed from resolved signals only -->
+      <div style="display:flex;gap:0;background:rgba(99,102,241,0.06);border-right:1px solid var(--border)">
+        <div style="padding:2px 6px 4px;border-right:1px solid var(--border);white-space:nowrap"><span style="font-size:6px;color:var(--muted2);display:block;letter-spacing:0.5px;text-transform:uppercase">← resolved signals only</span><div style="display:flex;gap:0">
+          <div style="padding:0 8px 0 0;white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">WIN RATE</span><span id="evWinRate" style="font-size:12px;font-weight:700">—</span></div>
+          <div style="padding:0 8px;border-left:1px solid var(--border2);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">AVG RET</span><span id="evAvgRet" style="font-size:12px;font-weight:700">—</span></div>
+          <div style="padding:0 8px;border-left:1px solid var(--border2);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">AVG ALPHA</span><span id="evAvgAlpha" style="font-size:12px;font-weight:700">—</span></div>
+          <div style="padding:0 8px;border-left:1px solid var(--border2);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">BEST WIN</span><span id="evBest" style="font-size:12px;font-weight:700;color:var(--green)">—</span></div>
+          <div style="padding:0 8px;border-left:1px solid var(--border2);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">WORST LOSS</span><span id="evWorst" style="font-size:12px;font-weight:700;color:var(--red)">—</span></div>
+          <div style="padding:0 8px;border-left:1px solid var(--border2);white-space:nowrap"><span style="font-size:7px;color:var(--muted);display:block;letter-spacing:0.5px">AVG WIN DAY</span><span id="evAvgWinDay" style="font-size:12px;font-weight:700">—</span></div>
+        </div></div>
+      </div>
     </div>
     <!-- Filters inline right -->
     <div style="display:flex;align-items:center;gap:4px;padding:4px 8px;flex-shrink:0">
@@ -2967,6 +3033,37 @@ td{padding:5px 10px;font-size:12px;white-space:nowrap;}
   <div class="stitle">REGRESSION <span style="font-family:var(--fm);font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0">— which parameters predict WIN outcomes</span></div>
   <div id="evRegressionContent">
     <div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">Loading regression model…</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="panel" id="tab-qa" style="padding:8px 12px">
+  <div class="stitle">QA <span style="font-family:var(--fm);font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0">— daily health check for EVALS data</span></div>
+
+  <!-- Sub-tab bar -->
+  <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:12px">
+    <button id="qaTab-stocks" onclick="qaSwitchTab('stocks')"
+      style="font-family:var(--fm);font-size:11px;font-weight:600;padding:6px 18px;border:none;background:none;cursor:pointer;color:var(--text);border-bottom:2px solid var(--text);margin-bottom:-1px">
+      Stock Check
+    </button>
+    <button id="qaTab-integrity" onclick="qaSwitchTab('integrity')"
+      style="font-family:var(--fm);font-size:11px;font-weight:600;padding:6px 18px;border:none;background:none;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px">
+      Integrity Checks
+    </button>
+  </div>
+
+  <!-- Sub-tab 1: Top-3 per phase stock-level check -->
+  <div id="qaPane-stocks">
+    <div id="qaContent">
+      <div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">Loading QA report…</div>
+    </div>
+  </div>
+
+  <!-- Sub-tab 2: Assertions + Bug detectors -->
+  <div id="qaPane-integrity" style="display:none">
+    <div id="qaChecksContent">
+      <div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">Loading integrity checks…</div>
+    </div>
   </div>
 </div>
 
@@ -3427,7 +3524,7 @@ let planStocks       = [];   // always full set — used by renderPlan + search 
 let serverStageCounts = {};  // stage counts from server — always reflects full universe
 let evSignals  = [];   // EVALS — must be declared before any function can reference it
 const _stageShort = {post_cross:'POST-X', pre_cross:'PRE-X', breakout:'BRK', pullback:'PULL', trending:'TREND', coiling:'COIL', none:'—'};
-const _stageColEv  = {post_cross:'var(--green)',pre_cross:'var(--gold)',breakout:'var(--blue)',pullback:'#c084fc',trending:'var(--muted)',coiling:'var(--muted)',none:'var(--muted)'};
+const _stageColEv  = {post_cross:'var(--c-postcross)',pre_cross:'var(--c-precross)',breakout:'var(--c-breakout)',pullback:'var(--c-pullback)',trending:'var(--c-trending)',coiling:'var(--c-coiling)',none:'var(--muted2)'};
 const _stagePillBg = {post_cross:'rgba(63,185,80,0.12)',  pre_cross:'rgba(210,153,34,0.12)', breakout:'rgba(88,166,255,0.12)', pullback:'rgba(192,132,252,0.12)', trending:'rgba(139,148,158,0.1)', coiling:'rgba(139,148,158,0.1)', none:'rgba(139,148,158,0.1)'};
 const _stagePillBd = {post_cross:'rgba(63,185,80,0.4)',   pre_cross:'rgba(210,153,34,0.4)',  breakout:'rgba(88,166,255,0.4)',  pullback:'rgba(192,132,252,0.4)',  trending:'rgba(139,148,158,0.3)', coiling:'rgba(139,148,158,0.3)', none:'rgba(139,148,158,0.3)'};
 const _statusCol  = {HIT:'var(--green)',STOP:'var(--red)',OPEN:'var(--muted)'};
@@ -3461,7 +3558,10 @@ let statLiq      = 0;
 let statMcap     = 'all';  // score-view own MCap filter — independent of scanner
 function rsiScore(r){ if(r>=45&&r<=58)return 12; if(r>58&&r<=65)return 7; if(r>=40&&r<45)return 4; if(r>65&&r<=72)return 2; return 0; }
 function adxScore(a){ if(a>=20&&a<=35)return 10; if(a>=15&&a<20)return 5; if(a>35)return 4; return 0; }
-function scoreColor(val, max){ const pct=val/max; return pct>=0.78?'var(--green)':pct>=0.54?'var(--gold)':'var(--muted2)'; }
+function scoreColor(val, max){
+  if(document.body.classList.contains('dark')) return 'var(--text)';
+  const pct=val/max; return pct>=0.78?'var(--green)':pct>=0.54?'var(--gold)':'var(--muted2)';
+}
 // Relative PE color: mirrors the scoring curve (green=good, amber=watch, red=bad)
 function relPeCol(v){ if(v==null)return'var(--muted2)'; if(v>=0&&v<=20)return'var(--green)'; if(v>=-20&&v<0)return'var(--green)'; if(v>20&&v<=40)return'#b45309'; if(v>=-40&&v<-20)return'#b45309'; if(v>40)return'var(--red)'; if(v<-60)return'var(--red)'; return'var(--muted2)'; }
 
@@ -3557,8 +3657,9 @@ async function renderCtrl(){
   const yf      = d.yf      || {};
   const compute = d.compute || {};
   const evals   = d.evals   || {};
+  const qa      = d.qa      || {};
 
-  const anyRunning = d.nse_pid || d.yf_pid || d.compute_pid || d.pipeline_pid || d.evals_pid;
+  const anyRunning = d.nse_pid || d.yf_pid || d.compute_pid || d.pipeline_pid || d.evals_pid || d.qa_pid;
   const runBadge = (pid) => pid ? ' <span class="ctrl-run">● RUNNING</span>' : '';
   const runBadgeStatus = (s) => s==='running' ? ' <span class="ctrl-run">● RUNNING</span>' : '';
   const statusBadge = (s) => {
@@ -3797,6 +3898,34 @@ async function renderCtrl(){
       <div class="ctrl-row"><span class="ctrl-lbl">Last message</span><span class="ctrl-val" style="color:var(--muted)">${evals.message||'—'}</span></div>
       <div class="ctrl-schedule">
         <span>⏱ Auto-runs after every full pipeline (RUN ALL + EOD) · manual for Kite-only reruns</span>
+        <span></span>
+      </div>
+    </div>
+
+    <!-- CARD 6: QA -->
+    <div class="ctrl-card">
+      <div class="ctrl-card-title">
+        <span>QA · EVALS CHECK${runBadge(d.qa_pid)}</span>
+        <button class="ctrl-btn ctrl-btn-blue" id="btnQa" onclick="ctrlTrigger('/api/qa/run','btnQa')" ${d.qa_pid||d.evals_pid||d.pipeline_pid?'disabled':''}>▶ Run QA</button>
+      </div>
+      <div style="font-family:var(--fm);font-size:9px;background:rgba(88,166,255,0.06);border-radius:3px;padding:5px 8px;margin-bottom:8px;border-left:2px solid var(--blue)">
+        <div style="color:var(--blue);font-weight:600">What happens:</div>
+        <div style="color:var(--muted);margin-top:2px;line-height:1.7">
+          <div>→ Computes top-3 per phase + ALL-tab extras from stocks_live</div>
+          <div>→ Checks each stock is in evals_signals as NEW ENTRY or RETRIGGER</div>
+          <div>→ Flags any missing or mis-tiered stocks as issues</div>
+          <div>→ Writes daily record to <code>data/qa_log.json</code></div>
+          <div style="color:var(--muted2)">Auto-runs after EVALS · run manually to re-check</div>
+        </div>
+      </div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Status</span><span class="ctrl-val">${statusBadge(qa.status)}</span></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Last run</span><span class="ctrl-val">${fmtDT(qa.saved_at)}</span></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Stocks checked</span><span class="ctrl-val ctrl-ok">${qa.count!==undefined?qa.count:'—'}</span></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Issues</span><span class="ctrl-val">${errVal(qa.errors)}</span></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Time spent</span><span class="ctrl-val">${fmtElapsed(qa.duration)}</span></div>
+      <div class="ctrl-row"><span class="ctrl-lbl">Summary</span><span class="ctrl-val" style="color:${qa.errors>0?'var(--red)':'var(--green)'}">${qa.message||'—'}</span></div>
+      <div class="ctrl-schedule">
+        <span>⏱ Auto-runs after EVALS completes each EOD</span>
         <span></span>
       </div>
     </div>
@@ -4051,11 +4180,14 @@ function updateClock(){
   if(st.textContent!==txt) st.textContent=txt;
   const tc=document.getElementById('mktTileClock');
   if(tc && tc.textContent!==timeStr) tc.textContent=timeStr;
-  if(refreshCountdown>0){
+  if(refreshCountdown>0 && mode==='open'){
     refreshCountdown--;
     const mm=Math.floor(refreshCountdown/60),ss=refreshCountdown%60;
     document.getElementById('refreshTxt').style.display='block';
     document.getElementById('refreshTxt').textContent=`Refresh in ${mm}:${ss.toString().padStart(2,'0')}`;
+  } else if(mode!=='open'){
+    refreshCountdown=0;
+    document.getElementById('refreshTxt').style.display='none';
   }
 }
 setInterval(updateClock,1000);
@@ -4323,18 +4455,28 @@ function renderPlan(){
   // viewBox 0 0 900 205
   // y=0–22: stage headers | y=22–152: price chart | y=152–200: volume chart
   const MF = "'JetBrains Mono',ui-monospace,monospace";
+  const _dark      = document.body.classList.contains('dark');
+  const _chartBg   = _dark ? '#252525' : '#f6f8fa';
+  const _lineColor = _dark ? '#555555' : '#d0d7de';
+  const _priceClr  = _dark ? '#aaaaaa' : '#424a53';
+  const _ema50Clr  = _dark ? '#ccaa44' : '#8a5c00';
+  const _ema14Clr  = _dark ? '#44aa88' : '#0a6640';
+  const _legBg     = _dark ? 'rgba(37,37,37,0.95)' : 'rgba(255,255,255,0.92)';
+  const _legBdr    = _dark ? '#444444' : '#d0d7de';
+  const _textClr   = _dark ? '#ffffff' : '#424a53';
   const stageRects = pipeStages.map(st =>
     `<rect x="${st.x}" y="0" width="${st.w}" height="200" fill="${st.color}" fill-opacity="0.04"/>`
   ).join('');
   const stageDividers = pipeStages.slice(1).map(st =>
-    `<line x1="${st.x}" y1="22" x2="${st.x}" y2="200" stroke="#d0d7de" stroke-width="1" stroke-dasharray="3,3"/>`
+    `<line x1="${st.x}" y1="22" x2="${st.x}" y2="200" stroke="${_lineColor}" stroke-width="1" stroke-dasharray="3,3"/>`
   ).join('');
   const stageHeaders = pipeStages.map(st => {
     const mid = st.x + st.w/2;
     const cnt = st.key==='_all' ? _ps.length : _ps.filter(s=>s.stage===st.key).length;
-    return `<text x="${mid}" y="11" text-anchor="middle" fill="${st.color}" font-family="${MF}" font-size="8.5" font-weight="700" letter-spacing="0.5">${st.label}</text>`
-         + `<rect x="${mid-18}" y="14" width="36" height="9" rx="2" fill="${st.color}" fill-opacity="0.15"/>`
-         + `<text x="${mid}" y="21" text-anchor="middle" fill="${st.color}" font-family="${MF}" font-size="7" font-weight="600">${cnt}</text>`;
+    const hdrClr = _dark ? '#ffffff' : st.color;
+    return `<text x="${mid}" y="11" text-anchor="middle" fill="${hdrClr}" font-family="${MF}" font-size="8.5" font-weight="700" letter-spacing="0.5">${st.label}</text>`
+         + `<rect x="${mid-18}" y="14" width="36" height="9" rx="2" fill="${hdrClr}" fill-opacity="${_dark?0.1:0.15}"/>`
+         + `<text x="${mid}" y="21" text-anchor="middle" fill="${hdrClr}" font-family="${MF}" font-size="7" font-weight="600">${cnt}</text>`;
   }).join('');
 
   // Price line: all(flat) → coiling(tight) → breakout spike → pre-cross → post-cross → pullback dip → trending rise
@@ -4390,65 +4532,73 @@ function renderPlan(){
                + `<text x="141" y="146" fill="#424a53" font-family="${MF}" font-size="7">price</text>`;
 
   // Clickable transparent overlay rects (on top of all SVG content)
+  const _hoverFill = _dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)';
   const clickOverlays = pipeStages.map(st =>
     `<rect x="${st.x}" y="0" width="${st.w}" height="205" fill="transparent" style="cursor:pointer"
       onclick="navToStageView('${st.key}')"
-      onmouseenter="this.setAttribute('fill','${st.color}');this.setAttribute('fill-opacity','0.13')"
+      onmouseenter="this.setAttribute('fill','${_hoverFill}')"
       onmouseleave="this.setAttribute('fill','transparent')"/>`
   ).join('');
 
   const svgChart = `<svg viewBox="0 0 900 205" style="width:100%;display:block;border-radius:4px 4px 0 0" xmlns="http://www.w3.org/2000/svg">
-    <rect width="900" height="205" fill="#f6f8fa" rx="3 3 0 0"/>
+    <rect width="900" height="205" fill="${_chartBg}" rx="3 3 0 0"/>
     ${stageRects}
     ${stageDividers}
     ${stageHeaders}
     ${priceAreaLine}
-    <polyline points="${ema50Pts}" fill="none" stroke="#8a5c00" stroke-width="1.2" stroke-dasharray="6,3" transform="translate(0,22)"/>
-    <polyline points="${ema14Pts}" fill="none" stroke="#0a6640" stroke-width="1.2" stroke-dasharray="4,2" transform="translate(0,22)"/>
-    <polyline points="${pricePts}" fill="none" stroke="#424a53" stroke-width="1.5" transform="translate(0,22)"/>
+    <polyline points="${ema50Pts}" fill="none" stroke="${_ema50Clr}" stroke-width="1.2" stroke-dasharray="6,3" transform="translate(0,22)"/>
+    <polyline points="${ema14Pts}" fill="none" stroke="${_ema14Clr}" stroke-width="1.2" stroke-dasharray="4,2" transform="translate(0,22)"/>
+    <polyline points="${pricePts}" fill="none" stroke="${_priceClr}" stroke-width="1.5" transform="translate(0,22)"/>
     ${brkAnnot}
     ${crossAnnot}
     ${pbAnnot}
     ${volBarsHtml}
-    <line x1="0" y1="200" x2="900" y2="200" stroke="#d0d7de" stroke-width="0.5"/>
-    ${legend}
+    <line x1="0" y1="200" x2="900" y2="200" stroke="${_lineColor}" stroke-width="0.5"/>
+    <rect x="5" y="136" width="158" height="14" rx="2" fill="${_legBg}" fill-opacity="0.95" stroke="${_legBdr}" stroke-width="0.5"/>
+    <line x1="10" y1="143" x2="24" y2="143" stroke="${_ema50Clr}" stroke-width="1.2" stroke-dasharray="5,2"/>
+    <text x="27" y="146" fill="${_ema50Clr}" font-family="${MF}" font-size="7">50 EMA</text>
+    <line x1="68" y1="143" x2="82" y2="143" stroke="${_ema14Clr}" stroke-width="1.2" stroke-dasharray="4,2"/>
+    <text x="85" y="146" fill="${_ema14Clr}" font-family="${MF}" font-size="7">14 EMA</text>
+    <line x1="124" y1="143" x2="138" y2="143" stroke="${_priceClr}" stroke-width="1.5"/>
+    <text x="141" y="146" fill="${_textClr}" font-family="${MF}" font-size="7">price</text>
     ${clickOverlays}
   </svg>`;
 
   // ── Stock columns aligned with SVG stage regions ───────────────────────
   const stockCols = pipeData.map(st => {
     if(st.key === '_all'){
-      return `<div onclick="navToStageView('_all')" style="flex:${st.w};border-right:1px solid #d0d7de;padding:6px 8px;min-width:0;overflow:hidden;background:#ffffff;cursor:pointer;transition:background 0.15s;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px" onmouseenter="this.style.background='rgba(125,133,144,0.08)'" onmouseleave="this.style.background='#ffffff'">
-        <div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:#424a53;text-align:center">NSE universe</div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#6e7781;text-align:center">→ view all</div>
+      return `<div onclick="navToStageView('_all')" class="pipe-col" style="flex:${st.w};border-right:1px solid var(--border);padding:6px 8px;min-width:0;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted2);text-align:center">NSE universe</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted2);text-align:center">→ view all</div>
       </div>`;
     }
     const rows = st.top.length
       ? st.top.map(s => {
-          const sc  = s._ps>=49?'#0a6640':s._ps>=34?'#8a5c00':'#6e7781';
-          const chc = (s.change||0)>=0?'#0a6640':'#c0152a';
+          const sc  = _dark ? 'var(--text)' : (s._ps>=49?'#0a6640':s._ps>=34?'#8a5c00':'#6e7781');
+          const chc = (s.change||0)>=0 ? 'var(--green)' : 'var(--red)';
+          const barClr = _dark ? 'rgba(255,255,255,0.4)' : (s._ps>=49?'#0a6640':s._ps>=34?'#8a5c00':'#6e7781');
           const bw  = Math.round(s._ps/63*100);
-          return `<div onclick="openDetail('${s.ticker}')" style="cursor:pointer;padding:3px 0 3px;border-bottom:1px solid #d0d7de">
+          return `<div onclick="openDetail('${s.ticker}')" style="cursor:pointer;padding:3px 0 3px;border-bottom:1px solid var(--border)">
             <div style="display:flex;justify-content:space-between;align-items:baseline">
               <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:68%">${s.ticker}</div>
               <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:${sc};flex-shrink:0">${s._ps}</div>
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:1px">
-              <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#424a53">₹${s.price.toLocaleString('en-IN')}</div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted2)">₹${s.price.toLocaleString('en-IN')}</div>
               <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:${chc}">${(s.change||0)>=0?'+':''}${s.change||0}%</div>
             </div>
-            <div style="height:2px;background:#d0d7de;border-radius:1px;margin-top:2px;overflow:hidden">
-              <div style="height:100%;width:${bw}%;background:${sc};border-radius:1px"></div>
+            <div style="height:2px;background:var(--border2);border-radius:1px;margin-top:2px;overflow:hidden">
+              <div style="height:100%;width:${bw}%;background:${barClr};border-radius:1px"></div>
             </div>
           </div>`;
         }).join('')
-      : `<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#c1c9d2;padding:8px 0;text-align:center">none today</div>`;
+      : `<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted2);padding:8px 0;text-align:center">none today</div>`;
     const more = st.count>3
-      ? `<div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:#6e7781;margin-top:3px;text-align:right">+${st.count-3} more</div>`
+      ? `<div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted2);margin-top:3px;text-align:right">+${st.count-3} more</div>`
       : '';
-    const hov = st.key==='coiling'?'rgba(66,74,83,0.08)':st.key==='breakout'?'rgba(125,78,0,0.08)':st.key==='pre_cross'?'rgba(0,95,82,0.08)':st.key==='post_cross'?'rgba(10,92,42,0.08)':st.key==='pullback'?'rgba(3,73,163,0.08)':'rgba(90,50,176,0.08)';
-    return `<div onclick="navToStageView('${st.key}')" style="flex:${st.w};border-right:1px solid #d0d7de;padding:6px 8px;min-width:0;overflow:hidden;background:#ffffff;cursor:pointer;transition:background 0.15s" onmouseenter="this.style.background='${hov}'" onmouseleave="this.style.background='#ffffff'">
-      <div style="font-family:'JetBrains Mono',monospace;font-size:8.5px;color:${st.color};margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${st.desc}</div>
+    const descClr = _dark ? 'var(--muted2)' : st.color;
+    return `<div onclick="navToStageView('${st.key}')" class="pipe-col" style="flex:${st.w};border-right:1px solid var(--border);padding:6px 8px;min-width:0;overflow:hidden">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:8.5px;color:${descClr};margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${st.desc}</div>
       ${rows}${more}
     </div>`;
   }).join('');
@@ -4458,7 +4608,7 @@ function renderPlan(){
     <div style="overflow-x:auto;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.07);border:1px solid var(--border)">
       <div style="min-width:680px">
         ${svgChart}
-        <div style="display:flex;border-top:1px solid #d0d7de;">${stockCols}</div>
+        <div style="display:flex;border-top:1px solid var(--border);">${stockCols}</div>
       </div>
     </div>
   </div>`;
@@ -4655,9 +4805,13 @@ function renderStages(){
     if(th) th.style.color = sortState.col===col ? 'var(--gold)' : '';
   });
 
+  // Search filter
+  const _scanQ = (document.getElementById('scanSearch')?.value || '').toUpperCase().trim();
+
   // Table rows for active stage (or all), sorted by sortState
   const rows = stocks
     .filter(x => activeStage === 'all' || x.stage === activeStage)
+    .filter(x => !_scanQ || x.ticker.includes(_scanQ) || (x.name||'').toUpperCase().includes(_scanQ))
     .map(x => {
       const ra = rsiScore(x.rsi) + adxScore(x.adx);
       const sigScore = (()=>{
@@ -4746,7 +4900,7 @@ const vpbTag = s => {
     const upside = tPrice
       ? `<span style="color:var(--green);font-family:var(--fm);font-size:10px;font-weight:600">+${tPct}%</span> <span style="font-size:8px;color:var(--muted2)">[${tType}]${_mmCond?'<br><span style="font-size:7px;color:var(--gold)">if BRK</span>':''}</span>`
       : `<span style="color:var(--muted2);font-family:var(--fm);font-size:10px">—</span>`;
-    const stageBadgeColor = {post_cross:'var(--green)',pre_cross:'#006651',breakout:'var(--gold)',coiling:'var(--muted2)',pullback:'#1547c0',trending:'#5a32b0',none:'var(--muted)'};
+    const stageBadgeColor = {post_cross:'var(--c-postcross)',pre_cross:'var(--c-precross)',breakout:'var(--c-breakout)',coiling:'var(--c-coiling)',pullback:'var(--c-pullback)',trending:'var(--c-trending)',none:'var(--muted2)'};
     const stageLabel = {post_cross:'POST×',pre_cross:'PRE×',breakout:'BRK',coiling:'COIL',pullback:'PULL',trending:'TREND',none:'—'};
     const FM = 'font-family:var(--fm)';
     const _naTag = (lbl) => ` <span style="${FM};font-size:8px;font-weight:500;color:var(--muted2);background:rgba(128,128,128,0.06);border:1px solid rgba(128,128,128,0.15);padding:1px 4px;border-radius:2px">${lbl}·NA</span>`;
@@ -5198,7 +5352,7 @@ function openDetail(ticker){
       <div class="dc"><div class="dcl">Stop Loss (–9%)</div><div class="dcv" style="color:var(--red)">₹${parseFloat(sl).toLocaleString('en-IN')}</div><div class="dcs" style="color:var(--muted)">Hard exit</div></div>
       <div class="dc"><div class="dcl">Score</div><div class="dcv" style="color:${_fullScore>=49?'var(--green)':_fullScore>=34?'var(--gold)':'var(--red)'}">${_fullScore}<span style="font-size:12px;color:var(--muted)">/63</span></div><div class="dcs">${_fullScore>=49?'✅ Strong':_fullScore>=34?'⚠️ Watch':'❌ Skip'}</div></div>
     </div>
-    <div class="sb">${sr('Fundamentals',s.fScore,20,'var(--gold)')}${sr('Technicals',s.tScore,22,'var(--blue)')}</div>
+    <div class="sb">${sr('Fundamentals',s.fScore,20,'var(--c-fscore)')}${sr('Technicals',s.tScore,22,'var(--c-tscore)')}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div class="sb" style="margin-bottom:0"><h3>FUNDAMENTALS</h3>
         ${mr('P/E',s.pe?s.pe+'x':'—',s.pe&&s.pe<20?'green':s.pe&&s.pe<30?'yellow':'red')}
@@ -5348,6 +5502,23 @@ function generateNews(){
 
 // ── TABS ──────────────────────────────────────────────
 let phaseMode = false;
+function toggleTheme() {
+  const dark = document.body.classList.toggle('dark');
+  document.getElementById('themeIcon').textContent  = dark ? '☾' : '☀';
+  document.getElementById('themeLabel').textContent = dark ? 'Dark' : 'Light';
+  try { localStorage.setItem('theme', dark ? 'dark' : 'light'); } catch(e) {}
+}
+// Restore saved theme on load (runs after DOM ready)
+document.addEventListener('DOMContentLoaded', function(){
+  try {
+    if (localStorage.getItem('theme') === 'dark') {
+      document.body.classList.add('dark');
+      document.getElementById('themeIcon').textContent  = '☾';
+      document.getElementById('themeLabel').textContent = 'Dark';
+    }
+  } catch(e) {}
+});
+
 function switchTab(name,el){
   document.querySelectorAll('.nav-item').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
@@ -5362,6 +5533,7 @@ function switchTab(name,el){
   if(name==='evals-analytics')   loadEvalsAndRender('analytics');
   if(name==='evals-lifecycle')   loadEvalsAndRender('lifecycle');
   if(name==='evals-regression')  loadRegressionAndRender();
+  if(name==='qa')                renderQA();
 }
 function navToStage(stage){
   phaseMode = stage !== 'all';
@@ -5493,7 +5665,7 @@ function renderStageView(){
   const sectorOpts = allSectors.map(s=>`<option value="${s}"${s===stgSector?'selected':''}>${s==='all'?'All Sectors':s}</option>`).join('');
 
   const stageLabelMap = {post_cross:'POST×',pre_cross:'PRE×',breakout:'BRK',coiling:'COIL',pullback:'PULL',trending:'TREND',none:'—'};
-  const stageColorMap = {post_cross:'var(--green)',pre_cross:'#006651',breakout:'var(--gold)',coiling:'var(--muted)',pullback:'#1547c0',trending:'#5a32b0',none:'var(--muted)'};
+  const stageColorMap = {post_cross:'var(--c-postcross)',pre_cross:'var(--c-precross)',breakout:'var(--c-breakout)',coiling:'var(--c-coiling)',pullback:'var(--c-pullback)',trending:'var(--c-trending)',none:'var(--muted2)'};
   const maxScore = key==='_all' ? 63 : 42;
 
   const FM = 'font-family:var(--fm)';
@@ -5663,7 +5835,7 @@ function renderScoreView(){
 
   const maxScore = 63;
   const stageLabelMap = {post_cross:'POST×',pre_cross:'PRE×',breakout:'BRK',coiling:'COIL',pullback:'PULL',trending:'TREND',none:'—'};
-  const stageColorMap = {post_cross:'var(--green)',pre_cross:'#006651',breakout:'var(--gold)',coiling:'var(--muted)',pullback:'#1547c0',trending:'#5a32b0',none:'var(--muted)'};
+  const stageColorMap = {post_cross:'var(--c-postcross)',pre_cross:'var(--c-precross)',breakout:'var(--c-breakout)',coiling:'var(--c-coiling)',pullback:'var(--c-pullback)',trending:'var(--c-trending)',none:'var(--muted2)'};
   const SVfm = 'font-family:var(--fm)';
   const SVC  = 'padding:3px 6px;text-align:center;vertical-align:middle';
 
@@ -6040,8 +6212,8 @@ function openWLDetail(ticker) {
     <!-- SCORE BARS -->
     <div class="sb" style="margin-bottom:0">
       <h3>SCORE BREAKDOWN</h3>
-      ${srBar('Fundamentals', s.fScore, 20, 'var(--gold)')}
-      ${srBar('Technicals', s.tScore, 22, 'var(--blue)')}
+      ${srBar('Fundamentals', s.fScore, 20, 'var(--c-fscore)')}
+      ${srBar('Technicals', s.tScore, 22, 'var(--c-tscore)')}
     </div>
   `;
 
@@ -6305,7 +6477,7 @@ function renderWL(){
   });
 
   const stageLabelMap = {post_cross:'POST×',pre_cross:'PRE×',breakout:'BRK',coiling:'COIL',pullback:'PULL',trending:'TREND',none:'—'};
-  const stageColorMap = {post_cross:'var(--green)',pre_cross:'#006651',breakout:'var(--gold)',coiling:'var(--muted)',pullback:'#1547c0',trending:'#5a32b0',none:'var(--muted)'};
+  const stageColorMap = {post_cross:'var(--c-postcross)',pre_cross:'var(--c-precross)',breakout:'var(--c-breakout)',coiling:'var(--c-coiling)',pullback:'var(--c-pullback)',trending:'var(--c-trending)',none:'var(--muted2)'};
   b.innerHTML = sortedWl.map(t => {
     const s = _wlSrc.find(x => x.ticker === t);
     if(!s) return `<tr>
@@ -6514,10 +6686,10 @@ async function loadEvalsAndRender(view) {
 function computeEvSummary() {
   // Summary bar reflects signal-tier stocks only (same scope as STOCK-WISE and ANALYTICS)
   const s = getEvSignalSigs();
-  document.getElementById('evTotal').textContent = s.length;
-  document.getElementById('evOpen').textContent  = s.filter(x => !x.outcome || x.outcome === 'OPEN').length;
-
+  document.getElementById('evTotal').textContent    = s.length;
+  document.getElementById('evOpen').textContent     = s.filter(x => !x.outcome || x.outcome === 'OPEN').length;
   const closed = s.filter(x => x.outcome === 'WIN' || x.outcome === 'LOSS');
+  document.getElementById('evResolved').textContent = closed.length;
   if (!closed.length) {
     ['evWinRate','evAvgRet','evAvgAlpha','evBest','evWorst','evAvgWinDay'].forEach(id => {
       const el = document.getElementById(id); if (el) el.textContent = '—';
@@ -6668,10 +6840,10 @@ function renderEvStock() {
     const entryStageColor = _stageColEv[_curStage] || 'var(--muted)';
     const entryStageShort = _stageShort[_curStage] || (_curStage||'').toUpperCase();
 
-    // Stock cell: ticker (9px) + stage·date (7px) — no company name
-    const stockCell = `<td style="position:sticky;left:0;z-index:1;background:var(--s1);padding:1px 5px;border-bottom:1px solid var(--border);border-right:2px solid var(--border);vertical-align:middle;width:${W_STOCK}px;min-width:${W_STOCK}px;max-width:${W_STOCK}px;overflow:hidden">
-      <div style="${FH};font-size:9px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3">${sig.ticker}${badge}</div>
-      <div style="${FM};font-size:6.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3"><span style="color:${entryStageColor}">${entryStageShort}</span>·${(sig.tier_date||sig.day0).slice(5)}</div>
+    // Stock cell: ticker (11px) + stage·date (9px)
+    const stockCell = `<td style="position:sticky;left:0;z-index:1;background:var(--s1);padding:2px 6px;border-bottom:1px solid var(--border);border-right:2px solid var(--border);vertical-align:middle;width:${W_STOCK}px;min-width:${W_STOCK}px;max-width:${W_STOCK}px;overflow:hidden">
+      <div style="${FH};font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4">${sig.ticker}${badge}</div>
+      <div style="${FM};font-size:9px;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3"><span style="color:${entryStageColor};font-weight:600">${entryStageShort}</span>·${(sig.tier_date||sig.day0).slice(5)}</div>
     </td>`;
 
     // ── Day cells ──────────────────────────────────────────────────────
@@ -6680,12 +6852,12 @@ function renderEvStock() {
       const dateStr = days[i];
       if (!dateStr) {
         // Empty future column — show just borders
-        return `<td style="border-bottom:1px solid var(--border);border-right:1px solid var(--border2);width:${W_DAY}px;min-width:${W_DAY}px;max-width:${W_DAY}px;background:rgba(0,0,0,0.015)"></td>`;
+        return `<td style="border-bottom:1px solid var(--border);border-right:1px solid var(--border2);width:${W_DAY}px;min-width:${W_DAY}px;max-width:${W_DAY}px;background:var(--s2)"></td>`;
       }
 
       // Stop displaying after outcome day for WIN/LOSS signals
       if (sig.outcome !== 'OPEN' && sig.outcome_day != null && i > sig.outcome_day) {
-        return `<td style="border-bottom:1px solid var(--border);border-right:1px solid var(--border2);width:${W_DAY}px;min-width:${W_DAY}px;max-width:${W_DAY}px;background:rgba(0,0,0,0.015)"></td>`;
+        return `<td style="border-bottom:1px solid var(--border);border-right:1px solid var(--border2);width:${W_DAY}px;min-width:${W_DAY}px;max-width:${W_DAY}px;background:var(--s2)"></td>`;
       }
 
       const price = sig.prices[dateStr];
@@ -6713,19 +6885,19 @@ function renderEvStock() {
       // Return %
       let retStr;
       if (ret === null) {
-        retStr = `<span style="font-size:7px;color:var(--muted2)">—</span>`;
+        retStr = `<span style="font-size:8px;color:var(--muted2)">—</span>`;
       } else if (inWin) {
-        retStr = `<span style="${FH};font-size:8px;font-weight:800;color:#00c853">${ret>0?'+':''}${ret}%</span>`;
+        retStr = `<span style="${FH};font-size:9px;font-weight:800;color:#27ae60">${ret>0?'+':''}${ret}%</span>`;
       } else if (inStop) {
-        retStr = `<span style="${FH};font-size:8px;font-weight:800;color:#ff1744">${ret>0?'+':''}${ret}%</span>`;
+        retStr = `<span style="${FH};font-size:9px;font-weight:800;color:#e74c3c">${ret>0?'+':''}${ret}%</span>`;
       } else {
-        retStr = `<span style="font-size:7px;font-weight:600;color:${ret>0?'var(--green)':ret<0?'var(--red)':'var(--muted)'}">${ret>0?'+':''}${ret}%</span>`;
+        retStr = `<span style="font-size:9px;font-weight:700;color:${ret>0?'var(--green)':ret<0?'var(--red)':'var(--muted2)'}">${ret>0?'+':''}${ret}%</span>`;
       }
 
-      const cellBg = inWin ? 'background:rgba(0,200,83,0.07);' : inStop ? 'background:rgba(255,23,68,0.07);' : '';
+      const cellBg = inWin ? 'background:rgba(39,174,96,0.08);' : inStop ? 'background:rgba(231,76,60,0.08);' : 'background:var(--s1);';
       const retrigBorder = isRetrigger ? 'border-left:3px solid #d4a017;' : '';
 
-      return `<td style="padding:1px 0;${cellBg}${retrigBorder}border-bottom:1px solid var(--border);border-right:1px solid var(--border2);text-align:center;vertical-align:middle;width:${W_DAY}px;min-width:${W_DAY}px;max-width:${W_DAY}px;${FM};overflow:hidden">${stagePill}<div style="font-size:7px;color:var(--text);line-height:1.25">${priceStr}</div><div style="line-height:1.25">${retStr}</div></td>`;
+      return `<td style="padding:2px 0;${cellBg}${retrigBorder}border-bottom:1px solid var(--border);border-right:1px solid var(--border2);text-align:center;vertical-align:middle;width:${W_DAY}px;min-width:${W_DAY}px;max-width:${W_DAY}px;${FM};overflow:hidden">${stagePill}<div style="font-size:9px;font-weight:600;color:var(--text);line-height:1.4">${priceStr}</div><div style="line-height:1.3">${retStr}</div></td>`;
     }).join('');
 
     return `<tr>${stockCell}${dayCells}</tr>`;
@@ -6827,6 +6999,174 @@ function renderEvAnalytics() {
 }
 
 // ── REGRESSION tab ──────────────────────────────────────────────────────────
+async function renderQA() {
+  const el  = document.getElementById('qaContent');
+  const el2 = document.getElementById('qaChecksContent');
+  if (!el) return;
+  el.innerHTML  = '<div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">Loading QA report…</div>';
+  if (el2) el2.innerHTML = '<div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">Loading integrity checks…</div>';
+  try {
+    const r = await fetch('/api/qa');
+    const log = await r.json();
+    if (!Array.isArray(log) || !log.length) {
+      el.innerHTML  = '<div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">No QA data yet — run QA worker after an EVALS run.</div>';
+      if (el2) el2.innerHTML = '';
+      return;
+    }
+    const FM = "font-family:'JetBrains Mono',ui-monospace,monospace";
+
+    // ── SECTION 1: Top-3 per phase stock-level rows (A1/A2/A3 assertion rows only) ──
+    const statusColor = s => s==='OK'?'var(--green)':s==='CLOSED'?'var(--muted)':'var(--red)';
+    const entryColor  = e => e==='NEW ENTRY'?'var(--blue)':e==='RETRIGGER'?'var(--gold)':e==='—'?'var(--muted2)':'var(--red)';
+
+    const sec1Html = log.map(rec => {
+      // Section 1 only shows rows that are phase/all-tab stocks (rows with a real phase label)
+      const phaseRows = (rec.rows || []).filter(row =>
+        row.phase !== '—' && row.entry_type !== undefined
+      );
+      if (!phaseRows.length) return '';
+      const issueCount = phaseRows.filter(r => r.status !== 'OK').length;
+      const issueColor = issueCount > 0 ? 'var(--red)' : 'var(--green)';
+      const summary    = issueCount > 0 ? `${issueCount} issue(s)` : 'All OK';
+      const rows = phaseRows.map(row => `
+        <tr>
+          <td style="padding:4px 8px;${FM};font-size:10px;color:var(--muted)">${row.phase.toUpperCase().replace(/_/g,'-')}</td>
+          <td style="padding:4px 8px;${FM};font-size:10px;font-weight:600;color:var(--text)">${row.ticker}</td>
+          <td style="padding:4px 8px;${FM};font-size:10px;font-weight:700;color:${statusColor(row.status)}">${row.status}</td>
+          <td style="padding:4px 8px;${FM};font-size:10px;color:${entryColor(row.entry_type)}">${row.entry_type || '—'}</td>
+          <td style="padding:4px 8px;${FM};font-size:10px;color:var(--muted2)">${row.detail || ''}</td>
+        </tr>`).join('');
+      return `
+        <div style="background:var(--s1);border:1px solid var(--border);border-radius:4px;margin-bottom:12px;overflow:hidden">
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--s2)">
+            <div style="${FM};font-size:11px;font-weight:700;color:var(--text)">${rec.trading_date}</div>
+            <div style="${FM};font-size:10px;color:${issueColor};font-weight:600">${summary}</div>
+            <div style="${FM};font-size:9px;color:var(--muted2);margin-left:auto">run at ${rec.run_at ? rec.run_at.slice(0,19).replace('T',' ') : '—'} · ${phaseRows.length} stocks</div>
+          </div>
+          <table style="width:100%;border-collapse:collapse">
+            <thead><tr style="border-bottom:1px solid var(--border2)">
+              <th style="padding:4px 8px;text-align:left;${FM};font-size:9px;font-weight:700;color:var(--muted2);letter-spacing:0.5px">PHASE</th>
+              <th style="padding:4px 8px;text-align:left;${FM};font-size:9px;font-weight:700;color:var(--muted2);letter-spacing:0.5px">TICKER</th>
+              <th style="padding:4px 8px;text-align:left;${FM};font-size:9px;font-weight:700;color:var(--muted2);letter-spacing:0.5px">STATUS</th>
+              <th style="padding:4px 8px;text-align:left;${FM};font-size:9px;font-weight:700;color:var(--muted2);letter-spacing:0.5px">ENTRY TYPE</th>
+              <th style="padding:4px 8px;text-align:left;${FM};font-size:9px;font-weight:700;color:var(--muted2);letter-spacing:0.5px">DETAIL</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+    }).join('');
+    el.innerHTML = sec1Html || '<div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:20px;text-align:center">No phase data available.</div>';
+
+    // ── SECTION 2: Assertions + Bug detectors (PASS/FAIL + REMARKS) ──
+    if (!el2) return;
+
+    // All check codes we know about, in display order
+    const ASSERT_CHECKS = [
+      { code:'A0a', label:'A0a', desc:'Each phase has exactly 3 stocks in Stock-Wise' },
+      { code:'A0b', label:'A0b', desc:'All-tab stocks are not duplicates of phase stocks' },
+      { code:'A1',  label:'A1',  desc:'Every top-3 stock has an OPEN tracking entry' },
+      { code:'A2',  label:'A2',  desc:'Every top-3 stock is visible (tier=signal, not hidden)' },
+      { code:'A3',  label:'A3',  desc:'Every top-3 stock has a golden line marker for today' },
+      { code:'A4',  label:'A4',  desc:'No stock appears twice as two active entries (ghost)' },
+      { code:'A5',  label:'A5',  desc:'Every active Stock-Wise stock has today\'s price recorded' },
+    ];
+    const BUG_CHECKS = [
+      { code:'B1', label:'B1', desc:'No entry date stamped on a weekend (midnight pipeline bug)' },
+      { code:'B2', label:'B2', desc:'No finished trade is missing its finish day number' },
+      { code:'B3', label:'B3', desc:'No WIN result shows less than +14% return (wrong baseline)' },
+      { code:'B4', label:'B4', desc:'No LOSS result shows less than -8% loss (wrong baseline)' },
+      { code:'B5', label:'B5', desc:'Entry day is not also counted as a golden line day' },
+      { code:'B6', label:'B6', desc:'Entry date matches an actual top-3 ranking day' },
+    ];
+
+    const passStyle  = `${FM};font-size:10px;font-weight:700;color:var(--green)`;
+    const failStyle  = `${FM};font-size:10px;font-weight:700;color:var(--red)`;
+    const bugStyle   = `${FM};font-size:10px;font-weight:700;color:var(--gold)`;
+    const muteStyle  = `${FM};font-size:10px;color:var(--muted2)`;
+    const labelStyle = `${FM};font-size:10px;font-weight:600;color:var(--text)`;
+
+    const sec2Html = log.map(rec => {
+      // Build a map: check_code -> list of failing detail strings
+      const failures = {};  // code -> [detail, ...]
+      (rec.rows || []).forEach(row => {
+        const code = row.entry_type; // for section-2 rows, entry_type holds the check code
+        if (row.status === 'ISSUE' || row.status === 'BUG') {
+          if (!failures[code]) failures[code] = [];
+          const ticker = row.ticker && row.ticker !== '—' ? `${row.ticker}: ` : '';
+          failures[code].push(ticker + (row.detail || ''));
+        }
+      });
+
+      const assertPassed = (rec.assert_failed || 0) === 0;
+      const bugsPassed   = (rec.bugs_detected || 0) === 0;
+      const overallColor = assertPassed && bugsPassed ? 'var(--green)' : 'var(--red)';
+      const overallLabel = assertPassed && bugsPassed ? 'All checks passed'
+        : [
+            !assertPassed ? `${rec.assert_failed} assertion(s) failed` : '',
+            !bugsPassed   ? `${rec.bugs_detected} bug(s) detected`     : '',
+          ].filter(Boolean).join(' · ');
+
+      const makeRows = (checks, group) => checks.map(chk => {
+        const fails = failures[chk.code] || [];
+        const passed = fails.length === 0;
+        const statusTxt = passed ? 'PASS' : (group === 'ASSERT' ? 'FAIL' : 'DETECTED');
+        const style = passed ? passStyle : (group === 'ASSERT' ? failStyle : bugStyle);
+        // Remarks: join all failing details, truncate per line
+        const remarks = passed ? '' : fails.map(f => `• ${f}`).join('<br>');
+        return `
+          <tr style="border-bottom:1px solid var(--border2)">
+            <td style="padding:4px 8px;${FM};font-size:9px;font-weight:700;color:var(--muted2);white-space:nowrap">${group === 'ASSERT' ? 'ASSERTION' : 'BUG CHECK'}</td>
+            <td style="padding:4px 8px;${FM};font-size:10px;font-weight:700;color:var(--muted);white-space:nowrap">${chk.label}</td>
+            <td style="padding:4px 8px;${FM};font-size:10px;color:var(--muted2);max-width:320px">${chk.desc}</td>
+            <td style="padding:4px 8px;${style};white-space:nowrap">${statusTxt}</td>
+            <td style="padding:4px 8px;${FM};font-size:9px;color:${passed ? 'var(--muted2)' : 'var(--red)'};line-height:1.8;word-break:break-word;white-space:normal">${remarks || '—'}</td>
+          </tr>`;
+      }).join('');
+
+      return `
+        <div style="background:var(--s1);border:1px solid var(--border);border-radius:4px;margin-bottom:12px;overflow:hidden">
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--s2)">
+            <div style="${FM};font-size:11px;font-weight:700;color:var(--text)">${rec.trading_date}</div>
+            <div style="${FM};font-size:10px;color:${overallColor};font-weight:600">${overallLabel}</div>
+            <div style="${FM};font-size:9px;color:var(--muted2);margin-left:auto">run at ${rec.run_at ? rec.run_at.slice(0,19).replace('T',' ') : '—'}</div>
+          </div>
+          <table style="width:100%;border-collapse:collapse;table-layout:fixed">
+            <thead><tr style="border-bottom:2px solid var(--border)">
+              <th style="padding:4px 8px;text-align:left;${FM};font-size:9px;font-weight:700;color:var(--muted2);letter-spacing:0.5px;width:75px">TYPE</th>
+              <th style="padding:4px 8px;text-align:left;${FM};font-size:9px;font-weight:700;color:var(--muted2);letter-spacing:0.5px;width:48px">CHECK</th>
+              <th style="padding:4px 8px;text-align:left;${FM};font-size:9px;font-weight:700;color:var(--muted2);letter-spacing:0.5px;width:28%">WHAT IT CHECKS</th>
+              <th style="padding:4px 8px;text-align:left;${FM};font-size:9px;font-weight:700;color:var(--muted2);letter-spacing:0.5px;width:70px">STATUS</th>
+              <th style="padding:4px 8px;text-align:left;${FM};font-size:9px;font-weight:700;color:var(--muted2);letter-spacing:0.5px">REMARKS</th>
+            </tr></thead>
+            <tbody>
+              ${makeRows(ASSERT_CHECKS, 'ASSERT')}
+              <tr><td colspan="5" style="padding:2px 8px;background:var(--s2);border-top:1px solid var(--border);border-bottom:1px solid var(--border)"></td></tr>
+              ${makeRows(BUG_CHECKS, 'BUG')}
+            </tbody>
+          </table>
+        </div>`;
+    }).join('');
+
+    el2.innerHTML = sec2Html || '<div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:20px;text-align:center">No check data available.</div>';
+
+  } catch(e) {
+    el.innerHTML  = `<div style="font-family:var(--fm);font-size:11px;color:var(--red);padding:40px;text-align:center">Error loading QA data: ${e.message}</div>`;
+    if (el2) el2.innerHTML = '';
+  }
+}
+
+function qaSwitchTab(name) {
+  ['stocks','integrity'].forEach(t => {
+    const pane = document.getElementById('qaPane-'+t);
+    const btn  = document.getElementById('qaTab-'+t);
+    if (!pane || !btn) return;
+    const active = t === name;
+    pane.style.display = active ? '' : 'none';
+    btn.style.color       = active ? 'var(--text)'  : 'var(--muted)';
+    btn.style.borderBottom = active ? '2px solid var(--text)' : '2px solid transparent';
+  });
+}
+
 async function loadRegressionAndRender() {
   const el = document.getElementById('evRegressionContent');
   if (!el) return;

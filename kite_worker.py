@@ -477,8 +477,9 @@ def _update_eval_prices(ltp_map, nifty_ltp=0, scan_date=None):
 # Does NOT re-run full compute — just updates price, change, upsidePct.
 # ════════════════════════════════════════════════════════════════════
 def run_price_refresh():
-    """Fetch live LTP for all stocks in data/computed/stocks.json.
-    Updates price, change, upsidePct in-place. Exit 0 on success, 1 on error.
+    """Fetch live LTP for all stocks and update stocks_master DB directly.
+    DB-only — does NOT read or write stocks.json (too large, causes hangs).
+    Exit 0 on success, 1 on error.
     """
     t0 = time.time()
 
@@ -493,39 +494,44 @@ def run_price_refresh():
         print(f'[KITE] Price refresh auth: {e}')
         sys.exit(2)
 
-    # Load computed stocks
-    if not os.path.exists(COMPUTED_FILE):
-        print(f'[KITE] Price refresh: {COMPUTED_FILE} not found — run full scan first')
+    # Load tickers + board + prevClose from DB (fast — no 1.5GB JSON read)
+    import sqlite3
+    db_path = os.path.join(BASE_DIR, 'data', 'dalal_street.db')
+    if not os.path.exists(db_path):
+        print('[KITE] Price refresh: DB not found')
         sys.exit(1)
-
     try:
-        with open(COMPUTED_FILE) as f:
-            computed = json.load(f)
-        stocks = computed.get('stocks', [])
-        if not stocks:
-            print('[KITE] Price refresh: no stocks in computed file')
-            sys.exit(0)
+        con = sqlite3.connect(db_path)
+        con.execute('PRAGMA journal_mode=WAL')
+        cur = con.execute('SELECT MAX(trading_date) FROM stocks_master')
+        trading_date = (cur.fetchone() or [None])[0]
+        if not trading_date:
+            print('[KITE] Price refresh: no data in stocks_master')
+            con.close()
+            sys.exit(1)
+        rows_db = con.execute(
+            'SELECT ticker, board, prevClose, price, targetPrice FROM stocks_master WHERE trading_date=?',
+            (trading_date,)
+        ).fetchall()
+        con.close()
     except Exception as e:
-        print(f'[KITE] Price refresh: read error: {e}')
+        print(f'[KITE] Price refresh: DB read error: {e}')
         sys.exit(1)
 
-    print(f'[KITE] Price refresh: {len(stocks)} stocks...')
+    stocks_db = {r[0]: {'board': r[1], 'prevClose': r[2], 'price': r[3], 'targetPrice': r[4]} for r in rows_db}
+    print(f'[KITE] Price refresh: {len(stocks_db)} stocks from DB ({trading_date})...')
 
-    # Build instrument key list and prev_close map
+    # Build instrument key list
     instrument_keys = []
-    key_to_sym = {}  # instrument key → ticker (handles SME -SM suffix)
-    prev_map = {}   # symbol → stored price (yesterday's close from last full scan)
-    for s in stocks:
-        sym = s.get('ticker', '')
-        if sym:
-            ikey = f'NSE:{sym}-SM' if s.get('board') == 'sme' else f'NSE:{sym}'
-            instrument_keys.append(ikey)
-            key_to_sym[ikey] = sym
-            prev_map[sym] = s.get('prevClose') or s.get('price', 0)
+    key_to_sym = {}
+    for sym, s in stocks_db.items():
+        ikey = f'NSE:{sym}-SM' if s.get('board') == 'sme' else f'NSE:{sym}'
+        instrument_keys.append(ikey)
+        key_to_sym[ikey] = sym
 
-    # Batch quote calls (500 per call) — quote() gives ohlc.close = yesterday's EOD price
-    ltp_map  = {}   # sym → current LTP
-    eod_map  = {}   # sym → previous day's EOD close (for correct % change)
+    # Batch quote calls (500 per call)
+    ltp_map = {}
+    eod_map = {}
     for i in range(0, len(instrument_keys), LTP_BATCH):
         batch = instrument_keys[i:i + LTP_BATCH]
         try:
@@ -542,100 +548,61 @@ def run_price_refresh():
             print(f'[KITE] quote() batch error: {e}')
         time.sleep(0.2)
 
-    # Patch stocks
-    updated = 0
-    for s in stocks:
-        sym = s.get('ticker', '')
-        ltp = ltp_map.get(sym)
-        if not ltp:
-            continue
-
-        # Use ohlc.close from Kite (yesterday's EOD) for accurate % change
-        eod = eod_map.get(sym) or prev_map.get(sym, ltp)
-        s['price']    = ltp
-        s['prevClose'] = eod   # keep updated so next refresh stays correct
-        s['change']   = round((ltp - eod) / eod * 100, 2) if eod else 0.0
-
-        # Recalculate upsidePct from stored targetPrice
-        tp = s.get('targetPrice')
-        if tp and tp > 0 and ltp > 0:
-            s['upsidePct'] = round((tp - ltp) / ltp * 100, 1)
-
-        updated += 1
-
-    # Fetch Nifty 50 + Sensex and save alongside stocks
+    # Fetch Nifty 50 + Sensex
+    indices = {}
     try:
         idx_keys = ['NSE:NIFTY 50', 'BSE:SENSEX']
-        idx_data = kite.quote(idx_keys)   # quote() returns OHLC + prev close
-        indices  = {}
+        idx_data = kite.quote(idx_keys)
         for key, label in [('NSE:NIFTY 50', 'NIFTY 50'), ('BSE:SENSEX', 'SENSEX')]:
             entry = idx_data.get(key, {})
             last  = round(float(entry.get('last_price') or 0), 2)
             prev  = round(float((entry.get('ohlc') or {}).get('close') or last), 2)
             chg   = round((last - prev) / prev * 100, 2) if prev else 0.0
             indices[label] = {'price': last, 'change': chg}
-        computed['indices'] = indices
         print(f'[KITE] Indices: NIFTY {indices.get("NIFTY 50", {}).get("price","?")}  SENSEX {indices.get("SENSEX", {}).get("price","?")}')
     except Exception as e:
         print(f'[KITE] Index fetch error (non-fatal): {e}')
 
-    # Save patched computed file — atomic write via temp file to prevent corruption
+    # Update stocks_master DB directly
+    updated = 0
     try:
-        computed['price_refreshed_at'] = get_ist().isoformat()
-        raw_str = json.dumps(computed, ensure_ascii=False)
-        # Guard against Infinity/NaN leaking into JSON
-        raw_str = raw_str.replace('Infinity', 'null').replace('NaN', 'null')
-        tmp_path = COMPUTED_FILE + '.tmp'
-        with open(tmp_path, 'w', encoding='utf-8') as f:
-            f.write(raw_str)
-        os.replace(tmp_path, COMPUTED_FILE)   # atomic on Windows
+        con = sqlite3.connect(db_path)
+        con.execute('PRAGMA journal_mode=WAL')
+        db_rows = []
+        for sym, ltp in ltp_map.items():
+            s = stocks_db.get(sym, {})
+            eod = eod_map.get(sym) or s.get('prevClose') or ltp
+            change = round((ltp - eod) / eod * 100, 2) if eod else 0.0
+            tp = s.get('targetPrice')
+            upside = round((tp - ltp) / ltp * 100, 1) if tp and tp > 0 and ltp > 0 else None
+            db_rows.append((ltp, eod, change, upside, sym, trading_date))
+        with con:
+            con.executemany(
+                'UPDATE stocks_master SET price=?, prevClose=?, change=?, upsidePct=? '
+                'WHERE ticker=? AND trading_date=?',
+                db_rows
+            )
+        updated = con.total_changes
+        con.close()
+        print(f'[KITE] stocks_master price update: {updated} rows for {trading_date}')
     except Exception as e:
-        print(f'[KITE] Price refresh write error: {e}')
+        print(f'[KITE] stocks_master update error: {e}')
         sys.exit(1)
 
-    # Also update stocks_master with live prices (targeted SQL UPDATE — no full file parse)
-    try:
-        import sqlite3
-        db_path = os.path.join(BASE_DIR, 'data', 'dalal_street.db')
-        if os.path.exists(db_path):
-            con = sqlite3.connect(db_path)
-            con.execute('PRAGMA journal_mode=WAL')
-            # Use MAX(trading_date) — not today's date — because compute may not have
-            # run yet today. Price refresh patches whatever the latest EOD row is.
-            cur = con.execute('SELECT MAX(trading_date) FROM stocks_master')
-            trading_date = (cur.fetchone() or [None])[0]
-            if trading_date:
-                rows = [
-                    (ltp_map[s['ticker']],
-                     eod_map.get(s['ticker']) or s.get('prevClose') or ltp_map[s['ticker']],
-                     round((ltp_map[s['ticker']] - (eod_map.get(s['ticker']) or s.get('prevClose') or ltp_map[s['ticker']])) /
-                           (eod_map.get(s['ticker']) or s.get('prevClose') or ltp_map[s['ticker']]) * 100, 2),
-                     s.get('upsidePct'),
-                     s['ticker'], trading_date)
-                    for s in stocks if s.get('ticker') in ltp_map
-                ]
-                with con:
-                    con.executemany(
-                        'UPDATE stocks_master SET price=?, prevClose=?, change=?, upsidePct=? '
-                        'WHERE ticker=? AND trading_date=?',
-                        rows
-                    )
-            db_updated = con.total_changes
-            con.close()
-            print(f'[KITE] stocks_master price update: {db_updated} rows for {trading_date}')
-    except Exception as e:
-        print(f'[KITE] stocks_master update error (non-fatal): {e}')
-
     duration = round(time.time() - t0, 1)
-    print(f'[KITE] Price refresh done: {updated}/{len(stocks)} updated in {duration}s')
+    total = len(stocks_db)
+    print(f'[KITE] Price refresh done: {updated}/{total} updated in {duration}s')
+
+    # Exit 1 if nothing updated — signals Kite API failure so server doesn't suppress next retry
+    exit_code = 0 if updated > 0 else 1
 
     # Write price refresh status
     price_status = {
-        'status':   'done',
+        'status':   'done' if updated > 0 else 'error',
         'count':    updated,
-        'errors':   len(stocks) - updated,
+        'errors':   total - updated,
         'duration': duration,
-        'message':  f'Prices updated: {updated}/{len(stocks)} stocks in {duration}s',
+        'message':  f'Prices updated: {updated}/{total} stocks in {duration}s',
         'saved_at': get_ist().isoformat(),
     }
     try:
@@ -644,7 +611,7 @@ def run_price_refresh():
     except Exception:
         pass
 
-    sys.exit(0)
+    sys.exit(exit_code)
 
 
 # ════════════════════════════════════════════════════════════════════

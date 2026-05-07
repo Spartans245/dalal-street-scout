@@ -393,7 +393,7 @@ _ACTIONABLE_STAGES = {'post_cross', 'pre_cross', 'breakout', 'pullback'}
 def _calc_sig_score(s):
     """Python replica of JS signal score: sigScore tier logic."""
     stage = s.get('stage', 'none')
-    if stage in ('trending', 'none', 'coiling'):
+    if stage in ('trending', 'none'):
         return 0
     vpb   = s.get('vpbScore',   0) or 0
     cross = s.get('crossScore', 0) or 0

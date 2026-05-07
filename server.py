@@ -193,6 +193,7 @@ state = {
     'yf_pid':        None,   # yf_worker subprocess PID
     'compute_pid':   None,   # compute subprocess PID
     'evals_pid':     None,   # eval_worker subprocess PID
+    'qa_pid':        None,   # qa_worker subprocess PID
 }
 state_lock = threading.Lock()
 
@@ -334,6 +335,7 @@ def read_status_file(name, running_pids=None):
             'yf':           'yf_pid',
             'compute':      'compute_pid',
             'evals':        'evals_pid',
+            'qa':           'qa_pid',
         }.get(name)
         pid = running_pids.get(pid_key) if pid_key else None
         if not pid_alive(pid):
@@ -367,7 +369,7 @@ def spawn_orchestrator(extra_args=None):
             except ImportError:
                 pass  # psutil not available — allow re-launch
 
-        cmd = [PYTHON, '-W', 'ignore', os.path.join(BASE_DIR, 'orchestrator.py')]
+        cmd = [PYTHON, '-W', 'ignore', os.path.join(BASE_DIR, 'orchestrator.py'), '--eod']
         if extra_args:
             cmd += extra_args
         print(f'[SERVER] Spawning: {" ".join(cmd)}')
@@ -387,9 +389,6 @@ def spawn_orchestrator(extra_args=None):
             with state_lock:
                 state['status'] = 'live' if mode == 'open' else 'eod'
             print(f'[SERVER] Pipeline done — stocks reloaded')
-            # Auto-run EVALS worker after every full pipeline run
-            spawn_evals_worker(force=True)
-            print(f'[SERVER] EVALS worker auto-started after pipeline')
 
         threading.Thread(target=_run, daemon=True).start()
     return True
@@ -554,11 +553,12 @@ def spawn_evals_worker(force=False):
                 state['evals_pid'] = None
             if proc.returncode == 0:
                 print(f'[SERVER] eval_worker done ({elapsed}s)')
-                # Run analytics → lifecycle → evals_db_writer in sequence
+                # Run analytics → lifecycle → evals_db_writer → qa_worker in sequence
                 for label, script in [
                     ('analytics_worker', 'analytics_worker.py'),
                     ('lifecycle_worker', 'lifecycle_worker.py'),
                     ('evals_db_writer',  'evals_db_writer.py'),
+                    ('qa_worker',        'qa_worker.py'),
                 ]:
                     w = subprocess.Popen(
                         [PYTHON, '-W', 'ignore', os.path.join(BASE_DIR, script)],
@@ -574,6 +574,36 @@ def spawn_evals_worker(force=False):
                 _write_evals_status('error', errors=1, duration=elapsed,
                                     message=f'exit code {proc.returncode}')
                 print(f'[SERVER] eval_worker exited with code {proc.returncode}')
+
+        threading.Thread(target=_run, daemon=True).start()
+    return True
+
+
+_qa_lock = threading.Lock()
+
+def spawn_qa_worker():
+    """Launch qa_worker.py in background. Returns False if already running."""
+    with _qa_lock:
+        with state_lock:
+            if state.get('qa_pid'):
+                return False
+        cmd = [PYTHON, '-W', 'ignore', os.path.join(BASE_DIR, 'qa_worker.py')]
+
+        def _run():
+            import time as _t
+            t0 = _t.time()
+            proc = subprocess.Popen(cmd, cwd=BASE_DIR,
+                creationflags=subprocess.BELOW_NORMAL_PRIORITY_CLASS)
+            with state_lock:
+                state['qa_pid'] = proc.pid
+            proc.wait()
+            with state_lock:
+                state['qa_pid'] = None
+            elapsed = round(_t.time() - t0, 1)
+            if proc.returncode == 0:
+                print(f'[SERVER] qa_worker done ({elapsed}s)')
+            else:
+                print(f'[SERVER] qa_worker exited with code {proc.returncode}')
 
         threading.Thread(target=_run, daemon=True).start()
     return True
@@ -945,6 +975,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({'ok': ok, 'msg': 'EVALS worker started' if ok else 'Already running'})
             return
 
+        if path == '/api/qa/run':
+            with state_lock:
+                already = bool(state.get('qa_pid'))
+            if already:
+                self.send_json({'ok': False, 'msg': 'QA worker already running'})
+            else:
+                ok = spawn_qa_worker()
+                self.send_json({'ok': ok, 'msg': 'QA worker started' if ok else 'Already running'})
+            return
+
         if path == '/api/refresh/yf':
             ok = spawn_yf_worker()
             self.send_json({'ok': ok, 'msg': 'YF fundamentals started' if ok else 'Already running'})
@@ -964,6 +1004,7 @@ class Handler(BaseHTTPRequestHandler):
                     'yf_pid':        state.get('yf_pid'),
                     'compute_pid':   state.get('compute_pid'),
                     'evals_pid':     state.get('evals_pid'),
+                    'qa_pid':        state.get('qa_pid'),
                     'nse_universe':  read_status_file('nse_universe'),
                     'nse':           read_status_file('nse'),
                     'kite':          read_status_file('kite'),
@@ -971,6 +1012,7 @@ class Handler(BaseHTTPRequestHandler):
                     'yf':            read_status_file('yf'),
                     'compute':       read_status_file('compute'),
                     'evals':         read_status_file('evals'),
+                    'qa':            read_status_file('qa'),
                 })
             return
 
@@ -1046,6 +1088,20 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({'signals': signals})
             except Exception as e:
                 self.send_json({'signals': [], 'error': str(e)})
+            return
+
+        # ── QA log ────────────────────────────────────────────────────
+        if path == '/api/qa':
+            qa_log = os.path.join(BASE_DIR, 'data', 'qa_log.json')
+            try:
+                if os.path.exists(qa_log):
+                    with open(qa_log, encoding='utf-8') as f:
+                        data = json.load(f)
+                else:
+                    data = []
+                self.send_json(data)
+            except Exception as e:
+                self.send_json({'error': str(e)})
             return
 
         # ── LIFECYCLE — all-stock journey tracker ─────────────────────
