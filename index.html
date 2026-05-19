@@ -2999,7 +2999,6 @@ td{padding:6px 10px;font-size:13px;white-space:nowrap;font-family:var(--fb);}
       <button onclick="loadEvalsAndRender('stock')" style="font-family:var(--fm);font-size:9px;background:var(--s1);border:1px solid var(--border);color:var(--muted);padding:2px 6px;border-radius:3px;cursor:pointer;height:22px">&#8635;</button>
     </div>
   </div>
-
   <!-- Table — maximal height -->
   <div id="evStockTable" style="overflow:auto;height:calc(100vh - 110px);cursor:grab;user-select:none" onmousedown="evDragStart(event)" onmousemove="evDragMove(event)" onmouseup="evDragEnd()" onmouseleave="evDragEnd()">
     <div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">Loading signals…</div>
@@ -6768,9 +6767,8 @@ function renderEvStock() {
     if (dateF && (s.tier_date || s.day0) !== dateF) return false;
     if (search && !s.ticker.includes(search) && !(s.name||'').toUpperCase().includes(search)) return false;
     if (outcomeF !== 'all') {
-      const st = evStatus(s);
-      const outcomeMap = {WIN:'HIT', LOSS:'STOP', OPEN:'OPEN'};
-      if (st !== (outcomeMap[outcomeF] || outcomeF)) return false;
+      const out = s.outcome || 'OPEN';
+      if (out !== outcomeF) return false;
     }
     return true;
   });

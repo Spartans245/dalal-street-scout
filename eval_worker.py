@@ -10,7 +10,6 @@ Modes:
 
 Reads (never writes):
   data/dalal_street.db       — stocks_live view (current prices, stages, scores)
-  data/computed/stocks.json  — fallback only if DB unavailable
 
 Writes (EVALS-owned only):
   data/dalal_street.db       — evals_signals + evals_daily_prices tables
@@ -19,8 +18,8 @@ Writes (EVALS-owned only):
 Rules:
   - Never import or modify compute.py / kite_worker.py / nse_worker.py
   - Never write to data/raw/* or data/computed/stocks.json
-  - One OPEN signal per ticker at all times — if a stock is already OPEN, add retrigger, never a new cycle
-  - Scoring uses rsi_score+adx_score (recomputed at runtime), never stored tScore
+  - One OPEN signal per ticker at all times — if already OPEN, add retrigger
+  - Selected set = top-3 per stage box + all-tab top-3, same sort as scanner UI
 """
 
 import sys, os, json, datetime, argparse
@@ -34,7 +33,6 @@ if hasattr(sys.stderr, 'reconfigure'):
 import sqlite3
 
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
-COMPUTED_FILE = os.path.join(BASE_DIR, 'data', 'computed', 'stocks.json')  # fallback only
 DB_FILE       = os.path.join(BASE_DIR, 'data', 'dalal_street.db')
 SIGNALS_FILE  = os.path.join(BASE_DIR, 'data', 'signals_log.json')
 STATUS_FILE   = os.path.join(BASE_DIR, 'data', 'status', 'evals.json')
@@ -135,74 +133,76 @@ def is_trading_day(date_str):
     return date_str not in _load_nse_holidays()
 
 
-# ── Scoring — identical to qa_worker, recomputed at runtime (never stored tScore) ──
+# ── Scanner top-3 selection — mirrors calcPipeScore + sort in index.html ──────
 
-PHASES = ['post_cross', 'pre_cross', 'breakout', 'coiling', 'pullback', 'trending']
+STAGES = ['post_cross', 'pre_cross', 'breakout', 'coiling', 'pullback', 'trending']
 
-def rsi_score(r):
+def _rsi_score(r):
     if r is None: return 0
-    if 45 <= r <= 58: return 12
-    if 58 < r <= 65:  return 7
-    if 40 <= r < 45:  return 4
-    if 65 < r <= 72:  return 2
+    if 45 <= r <= 58:      return 12
+    if r > 58 and r <= 65: return 7
+    if 40 <= r < 45:       return 4
+    if r > 65 and r <= 72: return 2
     return 0
 
-def adx_score(a):
+def _adx_score(a):
     if a is None: return 0
     if 20 <= a <= 35: return 10
     if 15 <= a < 20:  return 5
     if a > 35:        return 4
     return 0
 
-def sig_score(s):
+def _pipe_score(s):
+    return (s.get('fScore') or 0) + _rsi_score(s.get('rsi')) + _adx_score(s.get('adx'))
+
+def _sig_score(s):
     stage = s.get('stage', 'none')
     if stage == 'trending': return 0
     if s.get('emaPreCross') and (s.get('vpbScore') or 0) > 0:
         vs = s.get('vpbScore')
         return 18 if vs >= 10 else (14 if vs >= 7 else 12)
     if (s.get('crossScore') or 0) > 0:
-        return s['crossScore'] + (3 if stage == 'pullback' else 0)
+        return s.get('crossScore') + (3 if stage == 'pullback' else 0)
     if (s.get('vpbScore') or 0) > 0:
-        return s['vpbScore']
+        return s.get('vpbScore')
     return 0
 
-def _phase_key(s):
+def _sort_key(s):
     return (
-        -((s.get('fScore') or 0) + rsi_score(s.get('rsi')) + adx_score(s.get('adx'))),
+        -_pipe_score(s),
         -(s.get('upsidePct') if s.get('upsidePct') is not None else -999),
         -(s.get('mcap') or 0),
     )
 
-def _all_key(s):
+def _all_tab_sort_key(s):
+    # All-tab uses pipe_score + sig_score — must match scanner UI and qa_worker
     return (
-        -((s.get('fScore') or 0) + rsi_score(s.get('rsi')) + adx_score(s.get('adx')) + sig_score(s)),
+        -(_pipe_score(s) + _sig_score(s)),
         -(s.get('upsidePct') if s.get('upsidePct') is not None else -999),
         -(s.get('mcap') or 0),
     )
-
-
-# ── Build today's selected set (same as qa_worker) ────────────────────────────
 
 def build_selected(stocks):
     """
-    Returns dict: ticker -> phase_label for today's top-3 per phase + all-tab extras.
-    Uses recomputed F+T+sig scores, never stored tScore.
+    Returns dict: ticker -> stage_label.
+    Top-3 per stage box + all-tab top-3 extras. Same sort as scanner UI.
+    Phase tabs sort by pipe_score (F+T). All tab sorts by pipe_score+sig_score.
     """
-    selected = {}
-    phase_tickers = set()
+    selected      = {}
+    stage_tickers = set()
 
-    for phase in PHASES:
-        bucket = sorted([s for s in stocks if s.get('stage') == phase], key=_phase_key)[:3]
+    for stage in STAGES:
+        bucket = sorted([s for s in stocks if s.get('stage') == stage], key=_sort_key)[:3]
         for s in bucket:
             t = s.get('ticker', '')
             if t:
-                phase_tickers.add(t)
-                selected[t] = phase
+                stage_tickers.add(t)
+                selected[t] = stage
 
-    all_sorted = sorted([s for s in stocks if s.get('stage', 'none') != 'none'], key=_all_key)
+    all_sorted = sorted([s for s in stocks if s.get('stage', 'none') != 'none'], key=_all_tab_sort_key)
     for s in all_sorted[:3]:
         t = s.get('ticker', '')
-        if t and t not in phase_tickers:
+        if t and t not in stage_tickers:
             selected[t] = 'all_tab'
 
     return selected
@@ -247,101 +247,65 @@ def _signal_row_to_dict(cur, row):
     return d
 
 def load_stocks():
-    """Read stocks from stocks_live DB view. Returns (stocks_list, nifty_price, trading_date)."""
-    if os.path.exists(DB_FILE):
-        try:
-            con = sqlite3.connect(f'file:{DB_FILE}?mode=ro', uri=True, check_same_thread=False)
-            trading_date = (con.execute('SELECT MAX(trading_date) FROM stocks_master').fetchone() or [None])[0]
-            cur = con.execute('SELECT * FROM stocks_live')
-            stocks = [_db_row_to_dict(cur, row) for row in cur.fetchall()]
-            nifty = 0.0
-            if trading_date:
-                row = con.execute('SELECT close FROM nifty_eod WHERE trading_date=?', (trading_date,)).fetchone()
-                nifty = float(row[0]) if row else 0.0
-            con.close()
-            if not nifty:
-                nifty_file = os.path.join(BASE_DIR, 'data', 'evals', 'nifty_close.json')
-                if os.path.exists(nifty_file):
-                    try:
-                        nd = json.load(open(nifty_file, encoding='utf-8'))
-                        if nd.get('date') == trading_date:
-                            nifty = float(nd.get('close', 0) or 0)
-                    except Exception:
-                        pass
-            if not trading_date:
-                trading_date = today_str()
-            print(f'[EVAL] Loaded {len(stocks)} stocks from DB (trading_date={trading_date})')
-            return stocks, nifty, trading_date
-        except Exception as e:
-            print(f'[EVAL] DB read error, falling back to stocks.json: {e}')
-
-    # Fallback: stocks.json
+    """Read stocks from stocks_live DB. Returns (stocks_list, nifty_price, trading_date)."""
     try:
-        with open(COMPUTED_FILE, encoding='utf-8') as f:
-            raw = f.read()
-        raw = raw.replace('Infinity', 'null').replace('NaN', 'null').replace('-null', 'null')
-        data, _ = json.JSONDecoder().raw_decode(raw)
-        stocks = data.get('stocks', [])
-        nifty  = data.get('indices', {}).get('NIFTY 50', {}).get('price', 0) or 0
-        trading_date = None
-        for key in ('price_refreshed_at', 'last_updated', 'saved_at'):
-            ts = data.get(key, '')
-            if ts and len(ts) >= 10:
-                trading_date = ts[:10]
-                break
-        trading_date = trading_date or today_str()
-        print(f'[EVAL] Loaded {len(stocks)} stocks from stocks.json (fallback)')
+        con = sqlite3.connect(f'file:{DB_FILE}?mode=ro', uri=True, check_same_thread=False)
+        trading_date = (con.execute('SELECT MAX(trading_date) FROM stocks_master').fetchone() or [None])[0]
+        cur = con.execute('SELECT * FROM stocks_live')
+        stocks = [_db_row_to_dict(cur, row) for row in cur.fetchall()]
+        nifty = 0.0
+        if trading_date:
+            row = con.execute('SELECT close FROM nifty_eod WHERE trading_date=?', (trading_date,)).fetchone()
+            nifty = float(row[0]) if row else 0.0
+        con.close()
+        if not trading_date:
+            trading_date = today_str()
+        print(f'[EVAL] Loaded {len(stocks)} stocks from DB (trading_date={trading_date})')
         return stocks, nifty, trading_date
     except Exception as e:
-        print(f'[EVAL] Cannot read stocks.json: {e}')
+        print(f'[EVAL] DB read error: {e}')
         return [], 0, today_str()
 
 def load_signals():
     """Read signals from evals_signals + evals_daily_prices DB tables."""
-    if os.path.exists(DB_FILE):
-        try:
-            con = sqlite3.connect(DB_FILE)
-            con.execute('PRAGMA journal_mode=WAL')
-            cur = con.execute('SELECT * FROM evals_signals ORDER BY day0')
-            signals = [_signal_row_to_dict(cur, row) for row in cur.fetchall()]
-            price_rows = con.execute(
-                'SELECT signal_id, trading_date, price, nifty_price FROM evals_daily_prices'
-            ).fetchall()
-            con.close()
-            prices_map = {}
-            nifty_map  = {}
-            for row in price_rows:
-                sid = row[0]
-                if sid not in prices_map:
-                    prices_map[sid] = {}
-                    nifty_map[sid]  = {}
-                if row[2] is not None:
-                    prices_map[sid][row[1]] = row[2]
-                if row[3] is not None:
-                    nifty_map[sid][row[1]]  = row[3]
-            for s in signals:
-                sid = s.get('id', '')
-                s['prices']       = prices_map.get(sid, {})
-                s['nifty_prices'] = nifty_map.get(sid, {})
-            print(f'[EVAL] Loaded {len(signals)} signals from DB')
-            return signals
-        except Exception as e:
-            print(f'[EVAL] DB signal read error, falling back to signals_log.json: {e}')
-
-    if not os.path.exists(SIGNALS_FILE):
-        return []
     try:
-        with open(SIGNALS_FILE, encoding='utf-8') as f:
-            return json.load(f).get('signals', [])
+        con = sqlite3.connect(DB_FILE)
+        con.execute('PRAGMA journal_mode=WAL')
+        cur = con.execute('SELECT * FROM evals_signals ORDER BY day0')
+        signals = [_signal_row_to_dict(cur, row) for row in cur.fetchall()]
+        price_rows = con.execute(
+            'SELECT signal_id, trading_date, price, nifty_price FROM evals_daily_prices'
+        ).fetchall()
+        con.close()
+        prices_map = {}
+        nifty_map  = {}
+        for row in price_rows:
+            sid = row[0]
+            if sid not in prices_map:
+                prices_map[sid] = {}
+                nifty_map[sid]  = {}
+            if row[2] is not None:
+                prices_map[sid][row[1]] = row[2]
+            if row[3] is not None:
+                nifty_map[sid][row[1]]  = row[3]
+        for s in signals:
+            sid = s.get('id', '')
+            s['prices']       = prices_map.get(sid, {})
+            s['nifty_prices'] = nifty_map.get(sid, {})
+        print(f'[EVAL] Loaded {len(signals)} signals from DB')
+        return signals
     except Exception as e:
-        print(f'[EVAL] Cannot read signals_log.json: {e}')
-        return []
+        print(f'[EVAL] DB signal read error: {e}')
+        if not os.path.exists(SIGNALS_FILE):
+            return []
+        try:
+            with open(SIGNALS_FILE, encoding='utf-8') as f:
+                return json.load(f).get('signals', [])
+        except Exception:
+            return []
 
 def save_signals(signals):
     """Write signals to evals_signals + evals_daily_prices DB tables."""
-    if not os.path.exists(DB_FILE):
-        _save_signals_json(signals)
-        return
     try:
         con = sqlite3.connect(DB_FILE)
         con.execute('PRAGMA journal_mode=WAL')
@@ -373,6 +337,9 @@ def save_signals(signals):
             con.executemany(price_sql, price_rows)
         con.close()
         print(f'[EVAL] Saved {len(sig_rows)} signals, {len(price_rows)} price rows to DB')
+        # Keep JSON mirror aligned with DB so downstream tools that still read
+        # signals_log.json (for example evals_db_writer) cannot reapply stale state.
+        _save_signals_json(signals)
     except Exception as e:
         print(f'[EVAL] DB save error: {e} — falling back to JSON')
         _save_signals_json(signals)
@@ -397,7 +364,7 @@ MAX_CALENDAR_DAYS = 60
 def compute_outcome(sig):
     """
     Walk sig.prices to find WIN/LOSS/EXPIRED. Skips already-resolved signals.
-    Baseline: price on tier_date (D0 entry). WIN=+15%, LOSS=-9%, EXPIRED=60 calendar days.
+    Baseline: price on tier_date. WIN=+15%, LOSS=-9%, EXPIRED=60 calendar days.
     """
     if sig.get('outcome') in ('WIN', 'LOSS', 'EXPIRED'):
         return
@@ -460,31 +427,30 @@ def is_within_tracking_window(sig, reference_date=None):
 # ── Daily snapshot ────────────────────────────────────────────────────────────
 
 def build_daily_snapshot(s, nifty_price):
-    ss = sig_score(s)
-    total = (s.get('fScore', 0) or 0) + rsi_score(s.get('rsi')) + adx_score(s.get('adx')) + ss
+    t_score = _rsi_score(s.get('rsi')) + _adx_score(s.get('adx'))
+    f_score = s.get('fScore', 0) or 0
     return {
-        'price':          round(float(s.get('price',      0) or 0), 2),
-        'nifty':          round(float(nifty_price or 0),            2),
-        'volume':         round(float(s.get('dailyVol',   0) or 0), 2),
-        'avg_volume':     round(float(s.get('avg20Vol',   0) or 0), 1),
-        'score':          total,
-        'fScore':         s.get('fScore',    0) or 0,
-        'tScore':         rsi_score(s.get('rsi')) + adx_score(s.get('adx')),
-        'sigScore':       ss,
-        'rsi':            round(float(s.get('rsi',  0) or 0), 1),
-        'adx':            round(float(s.get('adx',  0) or 0), 1),
-        'upsidePct':      s.get('upsidePct', 0) or 0,
-        'stage':          s.get('stage',    'none'),
-        'vpbScore':       s.get('vpbScore',    0) or 0,
-        'crossScore':     s.get('crossScore',  0) or 0,
-        'emaPreCross':    bool(s.get('emaPreCross')),
-        'emaCross':       bool(s.get('emaCross')),
-        'emaPullback':    bool(s.get('emaPullback')),
-        'volConfirm':     bool(s.get('volConfirm')),
-        'priceCoiling':   bool(s.get('priceCoiling')),
-        'volShrinking':   bool(s.get('volShrinking')),
-        'mcap':           s.get('mcap',     0) or 0,
-        'pe':             round(float(s.get('pe',   0) or 0), 1),
+        'price':        round(float(s.get('price',    0) or 0), 2),
+        'nifty':        round(float(nifty_price or 0),          2),
+        'volume':       round(float(s.get('dailyVol', 0) or 0), 2),
+        'avg_volume':   round(float(s.get('avg20Vol', 0) or 0), 1),
+        'score':        f_score + t_score,
+        'fScore':       f_score,
+        'tScore':       t_score,
+        'rsi':          round(float(s.get('rsi', 0) or 0), 1),
+        'adx':          round(float(s.get('adx', 0) or 0), 1),
+        'upsidePct':    s.get('upsidePct', 0) or 0,
+        'stage':        s.get('stage', 'none'),
+        'vpbScore':     s.get('vpbScore',   0) or 0,
+        'crossScore':   s.get('crossScore', 0) or 0,
+        'emaPreCross':  bool(s.get('emaPreCross')),
+        'emaCross':     bool(s.get('emaCross')),
+        'emaPullback':  bool(s.get('emaPullback')),
+        'volConfirm':   bool(s.get('volConfirm')),
+        'priceCoiling': bool(s.get('priceCoiling')),
+        'volShrinking': bool(s.get('volShrinking')),
+        'mcap':         s.get('mcap', 0) or 0,
+        'pe':           round(float(s.get('pe', 0) or 0), 1),
     }
 
 
@@ -506,13 +472,13 @@ def day_n_for(sig, date_str):
 
 def process_selected(signals, selected, stocks, trading_date):
     """
-    For each ticker in today's selected set:
-      - If no OPEN signal exists → create a new cycle entry (tier='signal', tier_date=today)
-      - If an OPEN signal exists → add retrigger for today if not already present
+    For each ticker in today's selected set (scanner top-3 per stage):
+      - No OPEN signal → create new entry (tier='signal', tier_date=today)
+      - Already OPEN   → add retrigger date if not already present
     Never creates a second OPEN signal for the same ticker.
     """
-    stock_map   = {s.get('ticker', ''): s for s in stocks}
-    open_sigs   = {}   # ticker -> most recent OPEN signal
+    stock_map  = {s.get('ticker', ''): s for s in stocks}
+    open_sigs  = {}
     cycle_count = defaultdict(int)
 
     for sig in signals:
@@ -523,16 +489,8 @@ def process_selected(signals, selected, stocks, trading_date):
             if not prev or sig.get('day0', '') > prev.get('day0', ''):
                 open_sigs[t] = sig
 
-    # Most-recent resolved signal per ticker (for D0 reset on new cycle)
-    resolved_latest = {}
-    for sig in signals:
-        if sig.get('outcome') in ('WIN', 'LOSS', 'EXPIRED'):
-            t = sig.get('ticker', '')
-            prev = resolved_latest.get(t)
-            if not prev or sig.get('day0', '') > prev.get('day0', ''):
-                resolved_latest[t] = sig
-
     new_count       = 0
+    promote_count   = 0
     retrigger_count = 0
 
     for ticker, phase in selected.items():
@@ -541,51 +499,35 @@ def process_selected(signals, selected, stocks, trading_date):
             continue
 
         existing = open_sigs.get(ticker)
+        f = s.get('fScore', 0) or 0
+        t_score = _rsi_score(s.get('rsi')) + _adx_score(s.get('adx'))
 
         if existing is None:
-            # ── New cycle ──────────────────────────────────────────
-            prior = resolved_latest.get(ticker)
-            if prior and prior.get('outcome') in ('WIN', 'LOSS'):
-                new_d0       = prior.get('outcome_day') and trading_date or trading_date
-                # D0 = outcome date of prior cycle
-                new_d0       = trading_date   # for new entries today, D0 = today
-                new_price_d0 = s.get('price', 0)
-            elif prior and prior.get('outcome') == 'EXPIRED':
-                new_d0       = trading_date
-                new_price_d0 = s.get('price', 0)
-            else:
-                new_d0       = trading_date
-                new_price_d0 = s.get('price', 0)
-
             cycle   = cycle_count[ticker] + 1
-            ss      = sig_score(s)
-            f       = s.get('fScore', 0) or 0
-            t_score = rsi_score(s.get('rsi')) + adx_score(s.get('adx'))
-            total   = f + t_score + ss
+            price   = s.get('price', 0)
 
             entry = {
-                'id':              f'{ticker}_{new_d0}_c{cycle}',
+                'id':              f'{ticker}_{trading_date}_c{cycle}',
                 'ticker':          ticker,
                 'name':            s.get('name', ticker),
                 'sector':          s.get('sector', 'Others'),
                 'board':           s.get('board', 'main'),
-                'day0':            new_d0,
+                'day0':            trading_date,
                 'tier':            'signal',
-                'tier_date':       new_d0,
+                'tier_date':       trading_date,
                 'stage':           s.get('stage', 'none'),
                 'source':          'eval_worker',
-                'score':           total,
+                'score':           f + t_score,
                 'fScore':          f,
                 'tScore':          t_score,
-                'sigScore':        ss,
-                'rsi':             round(s.get('rsi',  0) or 0, 1),
-                'adx':             round(s.get('adx',  0) or 0, 1),
-                'pe':              round(s.get('pe',   0) or 0, 1),
-                'mcap':            s.get('mcap',        0) or 0,
-                'board':           s.get('board', 'main'),
-                'vpbScore':        s.get('vpbScore',    0) or 0,
+                'sigScore':        0,
+                'rsi':             round(s.get('rsi', 0) or 0, 1),
+                'adx':             round(s.get('adx', 0) or 0, 1),
+                'pe':              round(s.get('pe',  0) or 0, 1),
+                'mcap':            s.get('mcap',       0) or 0,
+                'vpbScore':        s.get('vpbScore',   0) or 0,
                 'vpbDetail':       s.get('vpbDetail', 'none'),
-                'crossScore':      s.get('crossScore',  0) or 0,
+                'crossScore':      s.get('crossScore', 0) or 0,
                 'emaPreCross':     bool(s.get('emaPreCross')),
                 'emaCross':        bool(s.get('emaCross')),
                 'emaPullback':     bool(s.get('emaPullback')),
@@ -594,13 +536,13 @@ def process_selected(signals, selected, stocks, trading_date):
                 'volShrinking':    bool(s.get('volShrinking')),
                 'deFlag':          s.get('deFlag'),
                 'roeFlag':         s.get('roeFlag'),
-                'price_d0':        new_price_d0,
-                'nifty_d0':        0,   # filled by update_prices
+                'price_d0':        price,
+                'nifty_d0':        0,
                 'prev_stages':     s.get('prevStages', {}),
-                'prices':          {new_d0: new_price_d0} if new_price_d0 else {},
+                'prices':          {trading_date: price} if price else {},
                 'nifty_prices':    {},
-                'daily_snapshots': {new_d0: build_daily_snapshot(s, 0)},
-                'stage_history':   [{'date': new_d0, 'stage': s.get('stage', 'none'), 'day_n': 0}],
+                'daily_snapshots': {trading_date: build_daily_snapshot(s, 0)},
+                'stage_history':   [{'date': trading_date, 'stage': s.get('stage', 'none'), 'day_n': 0}],
                 'retrigger_dates': [],
                 'outcome':         'OPEN',
                 'outcome_day':     None,
@@ -608,14 +550,43 @@ def process_selected(signals, selected, stocks, trading_date):
                 'outcome_ret':     None,
             }
             signals.append(entry)
-            open_sigs[ticker]    = entry   # prevent double-entry within same run
+            open_sigs[ticker]    = entry
             cycle_count[ticker] += 1
             new_count += 1
 
         else:
-            # ── Retrigger ─────────────────────────────────────────
-            # Skip if today IS the tier_date (entry day is not a retrigger)
-            if existing.get('tier_date') == trading_date:
+            # Existing OPEN baseline now selected by scanner top-3:
+            # promote in-place to signal tier (no second OPEN cycle).
+            if existing.get('tier') != 'signal':
+                existing['tier']      = 'signal'
+                existing['tier_date'] = trading_date
+                existing['source']    = 'eval_worker'
+                # Keep signal context fresh for UI/analytics.
+                existing['stage']        = s.get('stage', existing.get('stage', 'none'))
+                existing['score']        = f + t_score
+                existing['fScore']       = f
+                existing['tScore']       = t_score
+                existing['rsi']          = round(s.get('rsi', 0) or 0, 1)
+                existing['adx']          = round(s.get('adx', 0) or 0, 1)
+                existing['pe']           = round(s.get('pe', 0) or 0, 1)
+                existing['mcap']         = s.get('mcap', 0) or 0
+                existing['vpbScore']     = s.get('vpbScore', 0) or 0
+                existing['vpbDetail']    = s.get('vpbDetail', 'none')
+                existing['crossScore']   = s.get('crossScore', 0) or 0
+                existing['emaPreCross']  = bool(s.get('emaPreCross'))
+                existing['emaCross']     = bool(s.get('emaCross'))
+                existing['emaPullback']  = bool(s.get('emaPullback'))
+                existing['volConfirm']   = bool(s.get('volConfirm'))
+                existing['priceCoiling'] = bool(s.get('priceCoiling'))
+                existing['volShrinking'] = bool(s.get('volShrinking'))
+                existing['deFlag']       = s.get('deFlag')
+                existing['roeFlag']      = s.get('roeFlag')
+                promote_count += 1
+                # Entry day to Stock-Wise: don't mark a retrigger on same date.
+                continue
+
+            # Already OPEN — add retrigger (skip if today is the entry day)
+            if existing.get('tier_date') == trading_date or existing.get('day0') == trading_date:
                 continue
             rdates = existing.setdefault('retrigger_dates', [])
             existing_dates = {r['date'] if isinstance(r, dict) else r for r in rdates}
@@ -623,88 +594,8 @@ def process_selected(signals, selected, stocks, trading_date):
                 rdates.append({'date': trading_date, 'day_n': day_n_for(existing, trading_date)})
                 retrigger_count += 1
 
-    print(f'[EVAL] New entries: {new_count} | Retriggers: {retrigger_count}')
+    print(f'[EVAL] New entries: {new_count} | Promotions: {promote_count} | Retriggers: {retrigger_count}')
     return new_count, retrigger_count
-
-
-# ── Baseline logging — all other stocks (for LIFECYCLE) ───────────────────────
-
-def log_baseline(signals, stocks, trading_date):
-    """
-    Log stocks NOT in today's selected set as tier='baseline'.
-    These are tracked for lifecycle analysis but not shown in Stock-Wise.
-    Only creates a new entry if the stock has no current OPEN signal.
-    """
-    open_tickers = {sig.get('ticker', '') for sig in signals if sig.get('outcome') == 'OPEN'}
-    cycle_count  = defaultdict(int)
-    for sig in signals:
-        cycle_count[sig.get('ticker', '')] += 1
-
-    new_count = 0
-    for s in stocks:
-        ticker = s.get('ticker', '')
-        stage  = s.get('stage', 'none')
-        if not ticker or stage == 'none':
-            continue
-        if ticker in open_tickers:
-            continue
-
-        cycle = cycle_count[ticker] + 1
-        ss    = sig_score(s)
-        f     = s.get('fScore', 0) or 0
-        t_sc  = rsi_score(s.get('rsi')) + adx_score(s.get('adx'))
-
-        entry = {
-            'id':              f'{ticker}_{trading_date}_c{cycle}',
-            'ticker':          ticker,
-            'name':            s.get('name', ticker),
-            'sector':          s.get('sector', 'Others'),
-            'board':           s.get('board', 'main'),
-            'day0':            trading_date,
-            'tier':            'baseline',
-            'tier_date':       None,
-            'stage':           stage,
-            'source':          'eval_worker',
-            'score':           f + t_sc + ss,
-            'fScore':          f,
-            'tScore':          t_sc,
-            'sigScore':        ss,
-            'rsi':             round(s.get('rsi',  0) or 0, 1),
-            'adx':             round(s.get('adx',  0) or 0, 1),
-            'pe':              round(s.get('pe',   0) or 0, 1),
-            'mcap':            s.get('mcap',        0) or 0,
-            'vpbScore':        s.get('vpbScore',    0) or 0,
-            'vpbDetail':       s.get('vpbDetail', 'none'),
-            'crossScore':      s.get('crossScore',  0) or 0,
-            'emaPreCross':     bool(s.get('emaPreCross')),
-            'emaCross':        bool(s.get('emaCross')),
-            'emaPullback':     bool(s.get('emaPullback')),
-            'volConfirm':      bool(s.get('volConfirm')),
-            'priceCoiling':    bool(s.get('priceCoiling')),
-            'volShrinking':    bool(s.get('volShrinking')),
-            'deFlag':          s.get('deFlag'),
-            'roeFlag':         s.get('roeFlag'),
-            'price_d0':        s.get('price', 0),
-            'nifty_d0':        0,
-            'prev_stages':     s.get('prevStages', {}),
-            'prices':          {trading_date: s.get('price', 0)} if s.get('price') else {},
-            'nifty_prices':    {},
-            'daily_snapshots': {trading_date: build_daily_snapshot(s, 0)},
-            'stage_history':   [{'date': trading_date, 'stage': stage, 'day_n': 0}],
-            'retrigger_dates': [],
-            'outcome':         'OPEN',
-            'outcome_day':     None,
-            'outcome_price':   None,
-            'outcome_ret':     None,
-        }
-        signals.append(entry)
-        open_tickers.add(ticker)
-        cycle_count[ticker] += 1
-        new_count += 1
-
-    if new_count:
-        print(f'[EVAL] Baseline entries: {new_count}')
-    return new_count
 
 
 # ── Price update ──────────────────────────────────────────────────────────────
@@ -732,7 +623,7 @@ def update_prices(signals, stocks, nifty_price, mode='eod', trading_date=None):
         if nifty_price > 0:
             sig.setdefault('nifty_prices', {})[today] = round(float(nifty_price), 2)
             if not sig.get('nifty_d0'):
-                sig['nifty_d0'] = sig['nifty_prices'].get(sig.get('day0', ''), round(float(nifty_price), 2))
+                sig['nifty_d0'] = round(float(nifty_price), 2)
         if mode == 'eod':
             snap = build_daily_snapshot(s, nifty_price)
             if not isinstance(sig.get('daily_snapshots'), dict):
@@ -752,6 +643,8 @@ def update_stage_history(signals, stocks, trading_date=None):
     for sig in signals:
         if sig.get('outcome') in ('WIN', 'LOSS', 'EXPIRED'):
             continue
+        if sig.get('tier') != 'signal':
+            continue
         ticker = sig.get('ticker', '')
         current_stage = stage_map.get(ticker)
         if not current_stage:
@@ -767,17 +660,6 @@ def update_stage_history(signals, stocks, trading_date=None):
 # ── Entry points ──────────────────────────────────────────────────────────────
 
 def run_eod():
-    """
-    EOD update:
-    1. Load stocks + nifty from DB (stocks_live)
-    2. Build today's selected set (top-3 per phase + all-tab) using rsi_score/adx_score
-    3. For each selected ticker: new entry if no OPEN signal, else retrigger
-    4. Log all other non-none stocks as baseline (lifecycle only)
-    5. Update prices for all OPEN signals within tracking window
-    6. Compute/recompute outcomes (WIN/LOSS/EXPIRED)
-    7. Update stage history
-    8. Save to DB
-    """
     import time as _time
     _t0 = _time.time()
     print('[EVAL] === EOD run starting ===')
@@ -800,17 +682,13 @@ def run_eod():
     signals = load_signals()
     print(f'[EVAL] Loaded {len(signals)} existing signals')
 
-    # Filter stocks to those with a valid stage for selection
     active_stocks = [s for s in stocks if s.get('stage', 'none') != 'none']
-
     selected = build_selected(active_stocks)
-    print(f'[EVAL] Selected: {len(selected)} stocks for today')
+    print(f'[EVAL] Selected: {len(selected)} stocks from scanner')
 
     process_selected(signals, selected, stocks, trading_date)
-    log_baseline(signals, stocks, trading_date)
     update_prices(signals, stocks, nifty, mode='eod', trading_date=trading_date)
 
-    # Recompute outcomes after prices are updated
     resolved = 0
     for sig in signals:
         if sig.get('outcome') not in ('WIN', 'LOSS', 'EXPIRED'):
@@ -824,19 +702,18 @@ def run_eod():
     update_stage_history(signals, stocks, trading_date=trading_date)
     save_signals(signals)
 
-    open_count  = sum(1 for s in signals if s.get('outcome') == 'OPEN')
-    sig_count   = sum(1 for s in signals if s.get('tier') == 'signal')
-    win_count   = sum(1 for s in signals if s.get('outcome') == 'WIN')
-    loss_count  = sum(1 for s in signals if s.get('outcome') == 'LOSS')
-    exp_count   = sum(1 for s in signals if s.get('outcome') == 'EXPIRED')
-    elapsed     = round(_time.time() - _t0, 1)
+    open_count = sum(1 for s in signals if s.get('outcome') == 'OPEN')
+    sig_count  = sum(1 for s in signals if s.get('tier') == 'signal')
+    win_count  = sum(1 for s in signals if s.get('outcome') == 'WIN')
+    loss_count = sum(1 for s in signals if s.get('outcome') == 'LOSS')
+    exp_count  = sum(1 for s in signals if s.get('outcome') == 'EXPIRED')
+    elapsed    = round(_time.time() - _t0, 1)
     print(f'[EVAL] Done — total: {len(signals)} | open: {open_count} | WIN: {win_count} | LOSS: {loss_count} | EXPIRED: {exp_count}')
     _write_status('done', count=sig_count, duration=elapsed,
                   message=f'{sig_count} stockwise · {open_count} open signals')
 
 
 def run_price_refresh():
-    """Intraday price-only update — no new entries, no retriggers, no outcomes."""
     print('[EVAL] === Price refresh starting ===')
     stocks, nifty, trading_date = load_stocks()
     if not stocks:

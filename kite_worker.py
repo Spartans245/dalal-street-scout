@@ -263,6 +263,54 @@ def fetch_ohlcv(kite, token, symbol):
 
 
 # ════════════════════════════════════════════════════════════════════
+# OHLCV HISTORY UPDATER — keeps ohlcv_history table current after scan
+# ════════════════════════════════════════════════════════════════════
+def _update_ohlcv_history(ohlcv):
+    """Upsert latest OHLCV rows from a completed scan into ohlcv_history.
+    ohlcv: {symbol: {rows: [[date,o,h,l,c,v], ...]}} — same structure as kite.json.
+    Non-fatal: errors are logged but do not affect the scan exit code.
+    """
+    import sqlite3 as _sqlite3
+    db_path = os.path.join(BASE_DIR, 'data', 'dalal_street.db')
+    if not os.path.exists(db_path):
+        return
+    try:
+        con = _sqlite3.connect(db_path)
+        con.execute('PRAGMA journal_mode=WAL')
+        # Create table if the backfill hasn't been run yet
+        con.execute('''
+            CREATE TABLE IF NOT EXISTS ohlcv_history (
+                ticker  TEXT NOT NULL,
+                date    TEXT NOT NULL,
+                open    REAL,
+                high    REAL,
+                low     REAL,
+                close   REAL,
+                volume  INTEGER,
+                PRIMARY KEY (ticker, date)
+            )
+        ''')
+        con.execute('CREATE INDEX IF NOT EXISTS idx_ohlcv_ticker ON ohlcv_history(ticker)')
+        con.execute('CREATE INDEX IF NOT EXISTS idx_ohlcv_date   ON ohlcv_history(date)')
+        inserted = 0
+        for sym, entry in ohlcv.items():
+            rows = entry.get('rows', []) if isinstance(entry, dict) else []
+            if not rows:
+                continue
+            with con:
+                con.executemany(
+                    'INSERT OR REPLACE INTO ohlcv_history (ticker,date,open,high,low,close,volume) '
+                    'VALUES (?,?,?,?,?,?,?)',
+                    [(sym, r[0], r[1], r[2], r[3], r[4], r[5]) for r in rows]
+                )
+            inserted += len(rows)
+        con.close()
+        print(f'[KITE] ohlcv_history updated: {len(ohlcv)} tickers, {inserted} rows upserted')
+    except Exception as e:
+        print(f'[KITE] ohlcv_history update (non-fatal): {e}')
+
+
+# ════════════════════════════════════════════════════════════════════
 # FULL SCAN — write data/raw/kite.json
 # ════════════════════════════════════════════════════════════════════
 def run_scan(test_symbols=None):
@@ -390,6 +438,10 @@ def run_scan(test_symbols=None):
         message=f'OHLCV saved: {len(ohlcv)} stocks, {skipped} no-token, {failed} errors',
     )
     print(f'[KITE] Scan done: {len(ohlcv)} stocks in {duration:.0f}s')
+
+    # Keep ohlcv_history table current after every scan (non-fatal if table absent)
+    _update_ohlcv_history(ohlcv)
+
     sys.exit(0)
 
 

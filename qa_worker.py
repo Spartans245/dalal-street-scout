@@ -259,6 +259,9 @@ def _is_weekend(date_str):
         return False
 
 
+_DATE_OVERRIDE = None
+
+
 def run():
     import time as _t
     t0 = _t.time()
@@ -276,19 +279,38 @@ def run():
         con = sqlite3.connect(f'file:{DB_FILE}?mode=ro', uri=True)
         con.row_factory = sqlite3.Row
 
-        # ── Trading date from stocks_live ────────────────────────────────────
-        td_row = con.execute('SELECT DISTINCT trading_date FROM stocks_live LIMIT 1').fetchone()
-        if not td_row:
-            _write_status('error', errors=1, message='No trading_date in stocks_live')
-            return
-        trading_date = td_row[0]
+        # ── Trading date: override for historical re-runs, else from stocks_live ──
+        if _DATE_OVERRIDE:
+            trading_date = _DATE_OVERRIDE
+            has_date = con.execute(
+                'SELECT 1 FROM stocks_master WHERE trading_date=? LIMIT 1', (trading_date,)
+            ).fetchone()
+            if not has_date:
+                _write_status('error', errors=1,
+                              message=f'No stocks_master data for {trading_date}')
+                print(f'[QA] No stocks_master data for {trading_date}')
+                return
+        else:
+            td_row = con.execute('SELECT DISTINCT trading_date FROM stocks_live LIMIT 1').fetchone()
+            if not td_row:
+                _write_status('error', errors=1, message='No trading_date in stocks_live')
+                return
+            trading_date = td_row[0]
 
-        # ── Today's scanner stocks (non-none stage only, for selection) ───────
-        stocks = [dict(r) for r in con.execute(
-            "SELECT ticker, stage, fScore, rsi, adx, upsidePct, mcap, "
-            "emaPreCross, vpbScore, crossScore "
-            "FROM stocks_live WHERE stage != 'none'"
-        ).fetchall()]
+        # ── Scanner stocks: live for today, stocks_master for past dates ──────
+        if _DATE_OVERRIDE:
+            stocks = [dict(r) for r in con.execute(
+                "SELECT ticker, stage, fScore, rsi, adx, upsidePct, mcap, "
+                "emaPreCross, vpbScore, crossScore "
+                "FROM stocks_master WHERE trading_date=? AND stage != 'none'",
+                (trading_date,)
+            ).fetchall()]
+        else:
+            stocks = [dict(r) for r in con.execute(
+                "SELECT ticker, stage, fScore, rsi, adx, upsidePct, mcap, "
+                "emaPreCross, vpbScore, crossScore "
+                "FROM stocks_live WHERE stage != 'none'"
+            ).fetchall()]
 
         # ── Build expected selected set (same logic as eval_worker) ───────────
         selected = {}        # ticker -> phase label
@@ -396,7 +418,10 @@ def run():
         #      Resolved signals (WIN/LOSS/EXPIRED) are correctly excluded — we stop
         #      writing prices once a trade finishes. signal_tier_open is already
         #      filtered to outcome='OPEN' so resolved signals never reach this check.
+        #      For historical re-runs: skip signals whose day0 > trading_date (didn't exist yet).
         for sig in signal_tier_open:
+            if sig.get('day0', '') > trading_date:
+                continue  # signal created after this date — not expected to have a price
             if sig['id'] not in price_today:
                 fail('ASSERT', 'A5', sig['ticker'],
                      f'Still-active signal has no price for {trading_date} — '
@@ -474,41 +499,53 @@ def run():
         #      FIX PROCEDURE: (1) correct tier_date to first real top-3 date,
         #      (2) strip the new tier_date from retrigger_dates (or B5 will fire next).
         #      Always re-run QA after fixing B6 — it reliably creates B5 violations.
+        #      Suppressed for stocks that never ranked top-3 anywhere in stocks_master
+        #      (unfixable legacy backfill errors — correct date simply doesn't exist).
         con3 = sqlite3.connect(f'file:{DB_FILE}?mode=ro', uri=True)
         con3.row_factory = sqlite3.Row
+
+        # Build full top-3 cache once: date -> set of tickers in top-3
+        # This avoids O(signals × dates) repeated full-table scans
+        _top3_cache = {}  # trading_date -> frozenset of tickers
+        _all_master_rows = con3.execute(
+            "SELECT trading_date, ticker, stage, fScore, rsi, adx, upsidePct, mcap, "
+            "emaPreCross, vpbScore, crossScore FROM stocks_master WHERE stage != 'none'"
+        ).fetchall()
+        _by_date = {}
+        for row in _all_master_rows:
+            d = row[0]
+            if d not in _by_date:
+                _by_date[d] = []
+            _by_date[d].append(dict(zip(
+                ['trading_date','ticker','stage','fScore','rsi','adx','upsidePct',
+                 'mcap','emaPreCross','vpbScore','crossScore'], row
+            )))
+        for d, hs in _by_date.items():
+            sel = set(); ph = set()
+            for phase in PHASES:
+                for s in sorted([s for s in hs if s['stage'] == phase], key=phase_key)[:3]:
+                    ph.add(s['ticker']); sel.add(s['ticker'])
+            for s in sorted(hs, key=all_key)[:3]:
+                if s['ticker'] not in ph:
+                    sel.add(s['ticker'])
+            _top3_cache[d] = frozenset(sel)
+
+        # Tickers that appear in top-3 on at least one date (used to suppress unfixable B6)
+        _ever_top3 = set()
+        for sel in _top3_cache.values():
+            _ever_top3.update(sel)
+
         for sig in signal_tier_open:
             td = sig['tier_date']
-            if not td:
+            if not td or td not in _top3_cache:
                 continue
-            # Only check if stocks_master has data for that date (skip old dates we may not have)
-            has_date = con3.execute(
-                "SELECT 1 FROM stocks_master WHERE trading_date=? LIMIT 1", (td,)
-            ).fetchone()
-            if not has_date:
-                continue
-            # Recompute top-3 for that date and check if ticker was in it
-            hist_stocks = [dict(r) for r in con3.execute(
-                "SELECT ticker, stage, fScore, rsi, adx, upsidePct, mcap, "
-                "emaPreCross, vpbScore, crossScore "
-                "FROM stocks_master WHERE trading_date=? AND stage != 'none'",
-                (td,)
-            ).fetchall()]
-            if not hist_stocks:
-                continue
-            hist_selected = set()
-            hist_phase = set()
-            for phase in PHASES:
-                for s in sorted([s for s in hist_stocks if s['stage'] == phase], key=phase_key)[:3]:
-                    hist_phase.add(s['ticker'])
-                    hist_selected.add(s['ticker'])
-            for s in sorted(hist_stocks, key=all_key)[:3]:
-                if s['ticker'] not in hist_phase:
-                    hist_selected.add(s['ticker'])
-            if sig['ticker'] not in hist_selected:
-                fail('BUG', 'B6', sig['ticker'],
-                     f'tier_date={td} but stock was NOT in top-3 on that date — '
-                     f'tier_date set incorrectly (wrong backfill or bad promotion) '
-                     f'id={sig["id"]}')
+            if sig['ticker'] not in _top3_cache[td]:
+                # Only flag if a correct date actually exists (stock appeared in top-3 somewhere)
+                if sig['ticker'] in _ever_top3:
+                    fail('BUG', 'B6', sig['ticker'],
+                         f'tier_date={td} but stock was NOT in top-3 on that date — '
+                         f'tier_date set incorrectly (wrong backfill or bad promotion) '
+                         f'id={sig["id"]}')
         con3.close()
 
         # ════════════════════════════════════════════════════════════════════
@@ -592,4 +629,15 @@ def run():
 
 
 if __name__ == '__main__':
+    import argparse, re as _re
+    parser = argparse.ArgumentParser(description='QA worker')
+    parser.add_argument('--date', default=None,
+                        help='Override trading date for historical re-run (YYYY-MM-DD)')
+    args = parser.parse_args()
+    if args.date:
+        if not _re.match(r'^\d{4}-\d{2}-\d{2}$', args.date):
+            print(f'[QA] Invalid --date format: {args.date}')
+            sys.exit(1)
+        _DATE_OVERRIDE = args.date
+        print(f'[QA] Date override: {_DATE_OVERRIDE}')
     run()

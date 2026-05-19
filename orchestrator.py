@@ -326,6 +326,14 @@ def run_pipeline(test=False, from_step=None, eod=False):
         if lc_code != 0:
             print(f'[ORCH] WARN: lifecycle_worker failed (exit {lc_code}) — non-fatal')
 
+        edb_code = run_worker('evals_db_writer.py', [], label='EVALS_DB')
+        if edb_code != 0:
+            print(f'[ORCH] WARN: evals_db_writer failed (exit {edb_code}) — non-fatal')
+
+        qa_code = run_worker('qa_worker.py', [], label='QA')
+        if qa_code != 0:
+            print(f'[ORCH] WARN: qa_worker failed (exit {qa_code}) — non-fatal')
+
     # ── Summary ───────────────────────────────────────────────────
     elapsed = round(time.time() - t0, 1)
     count   = st.get('count', 0)
