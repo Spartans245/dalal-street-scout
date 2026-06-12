@@ -74,6 +74,12 @@ try:
 except Exception:
     def classify_stage(t): return 'none'
 
+import shared.volume_profile as vpmod
+from kite_worker import load_instrument_map
+
+VP_CACHE_DIR = os.path.join(BASE_DIR, 'data', 'computed', 'vp_cache')
+VP_CACHE_TTL = 6 * 60 * 60  # 6 hours
+
 TOKEN_FILE  = os.path.join(BASE_DIR, 'kite_token.json')
 CONFIG_FILE = os.path.join(BASE_DIR, 'kite_config.json')
 
@@ -174,6 +180,56 @@ def db_meta():
     except Exception as e:
         print(f'[DB] meta query error: {e}')
         return None
+
+
+# ════════════════════════════════════════════════════════════════════
+# VOLUME PROFILE — fetch + cache
+# ════════════════════════════════════════════════════════════════════
+def get_volume_profile(ticker, force_refresh=False, bins=50):
+    """Return weekly VP + daily/4H candles + analysis for `ticker`.
+    Cached to data/computed/vp_cache/<ticker>.json with a TTL.
+    """
+    os.makedirs(VP_CACHE_DIR, exist_ok=True)
+    cache_file = os.path.join(VP_CACHE_DIR, f'{ticker}.json')
+
+    if not force_refresh and os.path.exists(cache_file):
+        age = time.time() - os.path.getmtime(cache_file)
+        if age < VP_CACHE_TTL:
+            with open(cache_file, encoding='utf-8') as f:
+                return json.load(f)
+
+    kite = load_kite()
+    token_map = load_instrument_map(kite)
+    token = token_map.get(ticker)
+    if not token:
+        raise RuntimeError(f'No Kite instrument token for {ticker}')
+
+    daily, weekly, fourh = vpmod.fetch_all(kite, token)
+    if daily.empty:
+        raise RuntimeError(f'No historical data returned for {ticker}')
+
+    vp = vpmod.build_volume_profile(daily, bins=bins)
+    analysis = vpmod.build_analysis(daily, weekly, fourh, vp)
+
+    result = {
+        'ticker':   ticker,
+        'fetched_at': datetime.datetime.now().isoformat(),
+        'vp':       vp,
+        'analysis': analysis,
+        'candles': {
+            'daily':  vpmod.candles_to_list(daily, limit=vpmod.DAILY_DISPLAY_BARS),
+            'weekly': vpmod.candles_to_list(weekly),
+            '4h':     vpmod.candles_to_list(fourh),
+        },
+    }
+
+    try:
+        with open(cache_file, 'w', encoding='utf-8') as f:
+            json.dump(result, f)
+    except Exception as e:
+        print(f'[VP] cache write failed for {ticker}: {e}')
+
+    return result
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -1143,6 +1199,18 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(data)
             except Exception as e:
                 self.send_json({'error': str(e)})
+            return
+
+        # ── Volume Profile analyser ──────────────────────────────────
+        if path.startswith('/api/volume-profile/'):
+            ticker = path.split('/')[-1].upper().strip()
+            qs = parse_qs(urlparse(self.path).query)
+            force_refresh = qs.get('refresh', ['0'])[0] == '1'
+            try:
+                data = get_volume_profile(ticker, force_refresh=force_refresh)
+                self.send_json(data)
+            except Exception as e:
+                self.send_json({'error': str(e)}, status=500)
             return
 
         self.send_response(404); self.end_headers()

@@ -571,10 +571,14 @@ def run():
                     rows.append({'ticker': ticker, 'phase': phase, 'status': 'ISSUE',
                                  'entry_type': i['check'], 'detail': i['detail']})
 
-        # Secondary rows: bug detector findings (not tied to today's selection)
+        # Secondary rows: global assertions + assert issues on non-selected tickers + bug findings
+        selected_tickers = set(selected.keys())
         for i in issues:
             if i['group'] == 'BUG':
                 rows.append({'ticker': i['ticker'], 'phase': '—', 'status': 'BUG',
+                             'entry_type': i['check'], 'detail': i['detail']})
+            elif i['group'] == 'ASSERT' and i['ticker'] not in selected_tickers:
+                rows.append({'ticker': i['ticker'], 'phase': '—', 'status': 'ISSUE',
                              'entry_type': i['check'], 'detail': i['detail']})
 
         elapsed     = round(_t.time() - t0, 1)

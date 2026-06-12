@@ -10,6 +10,7 @@ kite_auth.py
 # Raw market data — large, auto-generated
 data/
 kite/
+*.db
 
 # SME symbols — auto-fetched
 sme_symbols.json

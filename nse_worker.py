@@ -17,7 +17,11 @@ Exit codes:
   1 = fatal error (orchestrator should abort)
 """
 
-import sys, os, json, time, math, datetime, argparse, requests
+import sys, os, json, time, math, datetime, argparse
+try:
+    from curl_cffi import requests
+except ImportError:
+    import requests  # fallback — may not bypass Akamai WAF
 
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -34,13 +38,12 @@ UNIVERSE_STATUS_FILE= os.path.join(STATUS_DIR, 'nse_universe.json')
 os.makedirs(RAW_DIR,    exist_ok=True)
 os.makedirs(STATUS_DIR, exist_ok=True)
 
-QUOTE_DELAY  = 0.35   # seconds between NSE quote-equity calls
-SESSION_TTL  = 600    # renew NSE session every 10 min
+QUOTE_DELAY  = 1.2    # seconds between NSE quote-equity calls (raised to avoid Akamai rate ban)
+SESSION_TTL  = 300    # renew NSE session every 5 min
 
 NSE_HEADERS = {
-    'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
     'Accept':          'application/json, text/plain, */*',
-    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Language': 'en-IN,en-US;q=0.9,en;q=0.8',
     'Referer':         'https://www.nseindia.com/',
 }
 
@@ -75,10 +78,20 @@ class NSESession:
         return self.session.get(url, headers=NSE_HEADERS, timeout=12, **kwargs)
 
     def _init(self):
-        s = requests.Session()
+        # curl_cffi impersonates Chrome's TLS fingerprint — bypasses Akamai bot detection.
+        # Without this, Akamai returns 403 for all /api/ paths even on residential IPs.
         try:
-            s.get('https://www.nseindia.com', headers=NSE_HEADERS, timeout=10)
-            time.sleep(0.5)
+            s = requests.Session(impersonate='chrome124')
+        except TypeError:
+            # Fallback if plain requests was imported instead of curl_cffi
+            s = requests.Session()
+        try:
+            s.get('https://www.nseindia.com', headers=NSE_HEADERS, timeout=15)
+            time.sleep(1.5)
+            # Warmup: browse a real page to activate the _abck Akamai cookie
+            s.get('https://www.nseindia.com/market-data/live-equity-market',
+                  headers={**NSE_HEADERS, 'Referer': 'https://www.nseindia.com/'}, timeout=12)
+            time.sleep(1.0)
         except Exception:
             pass
         self.session   = s
@@ -298,10 +311,15 @@ def main():
         # Store as dict keyed by symbol for easy lookup by compute.py
         fund_map = {r['symbol']: r for r in results}
         # In test mode, only update the fundamentals for the tested symbols — never wipe production data
+        # In full mode, only overwrite if we got a meaningful number of results (>10% of universe)
+        # to protect against a silent total-failure wiping good cached data.
+        min_acceptable = max(10, len(universe) // 10)
         if args.test:
             existing['fundamentals'].update(fund_map)
-        else:
+        elif len(results) >= min_acceptable:
             existing['fundamentals'] = fund_map
+        else:
+            print(f'[NSE] WARN: only {len(results)}/{len(universe)} stocks fetched — keeping existing fundamentals cache')
         existing['fundamentals_saved_at'] = datetime.datetime.now().isoformat()
         save_raw(existing)
 

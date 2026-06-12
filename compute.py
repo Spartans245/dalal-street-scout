@@ -114,18 +114,50 @@ def load_kite_raw():
 
 
 def load_nse_raw():
-    """Load data/raw/nse.json. Returns fundamentals dict {symbol: {pe, mcap, sector, name, ...}}."""
-    if not os.path.exists(NSE_FILE):
-        print('[COMPUTE] WARN: nse.json not found — PE/MCap/sector will be missing')
-        return {}
-    try:
-        with open(NSE_FILE) as f:
-            data = json.load(f)
-        fund = data.get('fundamentals', {})
+    """Load data/raw/nse.json. Returns fundamentals dict {symbol: {pe, mcap, sector, name, ...}}.
+    Falls back to most-recent DB rows if nse.json is empty (e.g. after a failed NSE fetch run)."""
+    fund = {}
+    if os.path.exists(NSE_FILE):
+        try:
+            with open(NSE_FILE) as f:
+                data = json.load(f)
+            fund = data.get('fundamentals', {})
+        except Exception as e:
+            print(f'[COMPUTE] WARN: Failed to load nse.json: {e}')
+
+    if fund:
         print(f'[COMPUTE] NSE fundamentals: {len(fund)} stocks')
         return fund
+
+    # nse.json is empty — fall back to most recent rows in stocks_master DB
+    db_path = os.path.join(BASE_DIR, 'data', 'dalal_street.db')
+    if not os.path.exists(db_path):
+        print('[COMPUTE] WARN: nse.json empty and no DB — PE/MCap/sector will be missing')
+        return {}
+    try:
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        # Most recent row per ticker that has pe or mcap populated
+        rows = conn.execute('''
+            SELECT ticker, pe, mcap, sector, name, wk52High, wk52Low
+            FROM stocks_master
+            WHERE trading_date = (
+                SELECT MAX(trading_date) FROM stocks_master sm2
+                WHERE sm2.ticker = stocks_master.ticker
+                  AND (sm2.pe > 0 OR sm2.mcap > 0)
+            )
+            AND (pe > 0 OR mcap > 0)
+        ''').fetchall()
+        conn.close()
+        fallback = {r['ticker']: {'pe': r['pe'] or 0, 'mcap': r['mcap'] or 0,
+                                  'sector': r['sector'] or 'Others', 'name': r['name'] or r['ticker'],
+                                  'wk52High': r['wk52High'] or 0, 'wk52Low': r['wk52Low'] or 0}
+                    for r in rows}
+        print(f'[COMPUTE] NSE fundamentals: 0 in nse.json — using DB fallback for {len(fallback)} stocks')
+        return fallback
     except Exception as e:
-        print(f'[COMPUTE] WARN: Failed to load nse.json: {e}')
+        print(f'[COMPUTE] WARN: DB fallback failed: {e} — PE/MCap/sector will be missing')
         return {}
 
 

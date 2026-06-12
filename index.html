@@ -249,6 +249,9 @@ td{padding:6px 10px;font-size:13px;white-space:nowrap;font-family:var(--fb);}
 .active-liq{border-color:var(--text)!important;color:var(--text)!important;background:var(--s3)!important;}
 .active-mseg{border-color:var(--text)!important;color:var(--text)!important;background:var(--s3)!important;}
 .btn-sm{padding:4px 8px;font-size:11px;}
+.card{background:var(--s1);border:1px solid var(--border);border-radius:4px;padding:12px 14px;}
+.vptf-btn{padding:5px 16px;border:none;background:none;cursor:pointer;font-family:var(--fm);font-size:11px;color:var(--muted);font-weight:400;border-bottom:2px solid transparent;margin-bottom:-1px;}
+.vptf-btn.active{color:var(--text);font-weight:600;border-bottom-color:var(--text);}
 
 /* STAGE COLUMNS */
 .stage-wrap{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;align-items:start;}
@@ -377,6 +380,7 @@ td{padding:6px 10px;font-size:13px;white-space:nowrap;font-family:var(--fb);}
     <div class="nav-item"        id="nav-scanner"   onclick="switchTab('scanner',this)">&#9906; Scanner</div>
     <div class="nav-item"        id="nav-watchlist" onclick="switchTab('watchlist',this)">&#9733; Watchlist</div>
     <div class="nav-item"        id="nav-sectorpe"  onclick="switchTab('sectorpe',this)">&#9685; Sector PE</div>
+    <div class="nav-item"        id="nav-volprofile" onclick="switchTab('volprofile',this)">&#9707; Volume Profile</div>
     <div class="nav-item"        id="nav-ctrl"      onclick="switchTab('ctrl',this)">&#9881; Control</div>
   </div>
   <div class="nav-section">
@@ -2927,6 +2931,53 @@ td{padding:6px 10px;font-size:13px;white-space:nowrap;font-family:var(--fb);}
   <div id="sectorPeContent" style="max-width:100%;overflow-x:auto">
     <div style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">Load any scan to see sector PE data</div>
   </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- VOLUME PROFILE ANALYSER                                          -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="panel" id="tab-volprofile">
+  <div class="stitle">VOLUME PROFILE ANALYSER <span style="font-family:var(--fm);font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0">— weekly VAH/POC/VAL/HVN/LVN levels &amp; multi-timeframe candle signals</span></div>
+
+  <div class="wlrow" style="position:relative;margin-bottom:10px;gap:8px;display:flex;align-items:center">
+    <input type="text" class="ti" id="vpTickerIn" placeholder="Enter NSE ticker — e.g. RELIANCE" autocomplete="off"
+           onkeydown="if(event.key==='Enter') vpLoad(this.value)" style="flex:1;max-width:280px">
+    <button class="btn btn-gold" onclick="vpLoad(document.getElementById('vpTickerIn').value)">Analyze</button>
+    <button class="btn btn-ghost" id="vpRefreshBtn" style="display:none" onclick="vpLoad(vpState.ticker, true)">Refresh data</button>
+    <div id="vpFetchedAt" style="font-family:var(--fm);font-size:10px;color:var(--muted2);margin-left:auto"></div>
+  </div>
+
+  <div id="vpContent" style="display:none">
+    <!-- Timeframe switcher -->
+    <div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:10px;gap:0">
+      <button id="vpTfWeekly" class="vptf-btn" onclick="vpSwitchTf('weekly')">WEEKLY</button>
+      <button id="vpTfDaily"  class="vptf-btn" onclick="vpSwitchTf('daily')">DAILY</button>
+      <button id="vpTf4h"     class="vptf-btn" onclick="vpSwitchTf('4h')">4H</button>
+    </div>
+
+    <!-- Chart -->
+    <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:4px;overflow:hidden">
+      <canvas id="vpCandleCanvas" style="flex:1;min-width:0;display:block"></canvas>
+      <canvas id="vpProfileCanvas" style="width:140px;flex-shrink:0;display:block;border-left:1px solid var(--border)"></canvas>
+    </div>
+    <div style="font-family:var(--fm);font-size:9px;color:var(--muted2);margin:4px 0 14px;display:flex;gap:14px;flex-wrap:wrap">
+      <span><span style="color:#22a06b">&#9644;</span> VAH</span>
+      <span><span style="color:#d4a017">&#9644;</span> POC</span>
+      <span><span style="color:#8b5a2b">&#9644;</span> VAL</span>
+      <span><span style="color:#5b8def">&#9644;</span> HVN</span>
+      <span>green/red candles = up/down close · right panel = weekly volume profile</span>
+    </div>
+
+    <!-- Overall analysis -->
+    <div id="vpOverall" class="card" style="margin-bottom:12px"></div>
+
+    <!-- Per-timeframe analysis -->
+    <div id="vpTimeframeAnalysis" style="display:grid;grid-template-columns:1fr 1fr;gap:12px"></div>
+  </div>
+
+  <div id="vpEmpty" style="font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">Enter a ticker and click Analyze</div>
+  <div id="vpLoading" style="display:none;font-family:var(--fm);font-size:11px;color:var(--muted);padding:40px;text-align:center">Fetching 3yr daily + 6mo intraday data from Kite — this can take a few seconds…</div>
+  <div id="vpError" style="display:none;font-family:var(--fm);font-size:11px;color:var(--red);padding:40px;text-align:center"></div>
 </div>
 
 <div class="panel" id="tab-ctrl">
@@ -5533,6 +5584,7 @@ function switchTab(name,el){
   if(name==='evals-lifecycle')   loadEvalsAndRender('lifecycle');
   if(name==='evals-regression')  loadRegressionAndRender();
   if(name==='qa')                renderQA();
+  if(name==='volprofile')        vpOnTabShown();
 }
 function navToStage(stage){
   phaseMode = stage !== 'all';
@@ -6304,6 +6356,269 @@ function drawMiniChart(s) {
 
   document.getElementById('chartMin').textContent = '₹'+minP.toLocaleString('en-IN');
   document.getElementById('chartMax').textContent = '₹'+maxP.toLocaleString('en-IN');
+}
+
+// ── VOLUME PROFILE ANALYSER ───────────────────────────
+const vpState = { ticker: null, data: null, tf: 'weekly' };
+
+function vpOnTabShown(){
+  if(vpState.data) vpRender();
+}
+
+async function vpLoad(ticker, refresh){
+  ticker = (ticker||'').trim().toUpperCase();
+  if(!ticker) return;
+  document.getElementById('vpContent').style.display = 'none';
+  document.getElementById('vpEmpty').style.display = 'none';
+  document.getElementById('vpError').style.display = 'none';
+  document.getElementById('vpLoading').style.display = 'block';
+  document.getElementById('vpRefreshBtn').style.display = 'none';
+  try{
+    const url = `/api/volume-profile/${encodeURIComponent(ticker)}${refresh?'?refresh=1':''}`;
+    const r = await fetch(url);
+    const data = await r.json();
+    document.getElementById('vpLoading').style.display = 'none';
+    if(data.error){
+      document.getElementById('vpError').style.display = 'block';
+      document.getElementById('vpError').textContent = 'Error: ' + data.error;
+      return;
+    }
+    vpState.ticker = ticker;
+    vpState.data = data;
+    vpState.tf = 'weekly';
+    document.getElementById('vpContent').style.display = 'block';
+    document.getElementById('vpRefreshBtn').style.display = 'inline-flex';
+    document.getElementById('vpFetchedAt').textContent = 'Fetched: ' + new Date(data.fetched_at).toLocaleString('en-IN');
+    vpRender();
+  }catch(e){
+    document.getElementById('vpLoading').style.display = 'none';
+    document.getElementById('vpError').style.display = 'block';
+    document.getElementById('vpError').textContent = 'Error: ' + e.message;
+  }
+}
+
+function vpSwitchTf(tf){
+  vpState.tf = tf;
+  vpRender();
+}
+
+function vpRender(){
+  if(!vpState.data) return;
+  ['weekly','daily','4h'].forEach(tf=>{
+    document.getElementById('vpTf'+(tf==='4h'?'4h':tf.charAt(0).toUpperCase()+tf.slice(1))).classList.toggle('active', tf===vpState.tf);
+  });
+  vpDrawChart();
+  vpRenderAnalysis();
+}
+
+// ── Chart drawing ──────────────────────────────────────
+function vpDrawChart(){
+  const candleCanvas  = document.getElementById('vpCandleCanvas');
+  const profileCanvas = document.getElementById('vpProfileCanvas');
+  const data = vpState.data;
+  const candles = data.candles[vpState.tf] || [];
+  const vp = data.vp;
+
+  const wrap = candleCanvas.parentElement;
+  const totalW = wrap.clientWidth || 900;
+  const H = 380;
+  const profileW = 140;
+  const candleW = Math.max(totalW - profileW, 200);
+
+  candleCanvas.width  = candleW; candleCanvas.height = H;
+  profileCanvas.width = profileW; profileCanvas.height = H;
+
+  const ctxC = candleCanvas.getContext('2d');
+  const ctxP = profileCanvas.getContext('2d');
+  ctxC.clearRect(0,0,candleW,H);
+  ctxP.clearRect(0,0,profileW,H);
+
+  const isDark = document.body.classList.contains('dark');
+  const colText = isDark ? '#999' : '#6b778c';
+  const colGrid = isDark ? '#2d2d2d' : '#ebecf0';
+  const colUp   = isDark ? '#27ae60' : '#15803d';
+  const colDown = isDark ? '#e74c3c' : '#de350b';
+
+  if(!candles.length){
+    ctxC.fillStyle = colText;
+    ctxC.font = '12px monospace';
+    ctxC.fillText('No candle data for this timeframe', 16, H/2);
+    return;
+  }
+
+  // Show last N candles depending on timeframe (avoid overcrowding)
+  const maxBars = { weekly: 156, daily: 180, '4h': 240 }[vpState.tf] || 150;
+  const visible = candles.slice(-maxBars);
+
+  // Y-range: candle highs/lows AND weekly VP edges (so levels always visible)
+  let lo = Math.min(...visible.map(c=>c.low));
+  let hi = Math.max(...visible.map(c=>c.high));
+  lo = Math.min(lo, vp.edges[0]);
+  hi = Math.max(hi, vp.edges[vp.edges.length-1]);
+  const pad = (hi - lo) * 0.04;
+  lo -= pad; hi += pad;
+  const range = hi - lo || 1;
+
+  const padL = 8, padR = 56, padT = 10, padB = 20;
+  const plotW = candleW - padL - padR;
+  const plotH = H - padT - padB;
+  const toY = price => padT + plotH - ((price - lo) / range) * plotH;
+  const toX = i => padL + (i + 0.5) * (plotW / visible.length);
+  const barW = Math.max(1, (plotW / visible.length) * 0.6);
+
+  // Grid + price axis labels
+  ctxC.strokeStyle = colGrid;
+  ctxC.fillStyle = colText;
+  ctxC.font = '10px monospace';
+  ctxC.lineWidth = 1;
+  const ticks = 6;
+  for(let i=0;i<=ticks;i++){
+    const price = lo + (range * i / ticks);
+    const y = toY(price);
+    ctxC.beginPath(); ctxC.moveTo(padL, y); ctxC.lineTo(candleW - padR, y); ctxC.stroke();
+    ctxC.fillText(price.toFixed(1), candleW - padR + 4, y + 3);
+  }
+
+  // Candles
+  visible.forEach((c,i)=>{
+    const x = toX(i);
+    const up = c.close >= c.open;
+    ctxC.strokeStyle = up ? colUp : colDown;
+    ctxC.fillStyle   = up ? colUp : colDown;
+    // wick
+    ctxC.beginPath();
+    ctxC.moveTo(x, toY(c.high));
+    ctxC.lineTo(x, toY(c.low));
+    ctxC.stroke();
+    // body
+    const yO = toY(c.open), yC = toY(c.close);
+    const bodyTop = Math.min(yO,yC), bodyH = Math.max(1, Math.abs(yC-yO));
+    ctxC.fillRect(x - barW/2, bodyTop, barW, bodyH);
+  });
+
+  // Weekly VP level lines (overlaid on every timeframe — Rule 1/2/3)
+  const levelLines = [
+    {price: vp.vah, color: '#22a06b', label: 'VAH'},
+    {price: vp.poc, color: '#d4a017', label: 'POC'},
+    {price: vp.val, color: '#8b5a2b', label: 'VAL'},
+  ];
+  vp.hvn.slice(0,3).forEach((h,i)=> levelLines.push({price:h[0], color:'#5b8def', label:`HVN${i+1}`}));
+
+  // Pass 1: draw all level lines
+  levelLines.forEach(l=>{
+    if(l.price < lo || l.price > hi) return;
+    const y = toY(l.price);
+    ctxC.strokeStyle = l.color;
+    ctxC.lineWidth = 1;
+    ctxC.setLineDash(l.label.startsWith('HVN') ? [3,3] : []);
+    ctxC.beginPath(); ctxC.moveTo(padL, y); ctxC.lineTo(candleW - padR, y); ctxC.stroke();
+    ctxC.setLineDash([]);
+  });
+
+  // Pass 2: draw labels, nudging down on collision (sorted top-to-bottom)
+  ctxC.font = '9px monospace';
+  const visibleLines = levelLines.filter(l => l.price >= lo && l.price <= hi)
+                                  .map(l => ({...l, y: toY(l.price)}))
+                                  .sort((a,b) => a.y - b.y);
+  let lastY = -Infinity;
+  visibleLines.forEach(l=>{
+    let labelY = l.y - 2;
+    if(labelY - lastY < 10) labelY = lastY + 10;
+    lastY = labelY;
+    ctxC.fillStyle = l.color;
+    ctxC.fillText(`${l.label} ${l.price.toFixed(2)}`, padL + 2, labelY);
+  });
+
+  // ── Volume profile panel (matching y-scale) ──────────
+  const maxVol = Math.max(...vp.vol_per_bin);
+  ctxP.fillStyle = isDark ? 'rgba(91,141,239,0.35)' : 'rgba(91,141,239,0.25)';
+  vp.centers.forEach((center,i)=>{
+    if(center < lo || center > hi) return;
+    const vol = vp.vol_per_bin[i];
+    const y = toY(center);
+    const binH = plotH / vp.centers.length * (range / (vp.edges[vp.edges.length-1]-vp.edges[0]));
+    const barLen = (vol / maxVol) * (profileW - 8);
+    ctxP.fillRect(0, y - binH/2, barLen, Math.max(1,binH));
+  });
+  // overlay level lines on profile panel too
+  levelLines.forEach(l=>{
+    if(l.price < lo || l.price > hi) return;
+    const y = toY(l.price);
+    ctxP.strokeStyle = l.color;
+    ctxP.lineWidth = 1;
+    ctxP.setLineDash(l.label.startsWith('HVN') ? [3,3] : []);
+    ctxP.beginPath(); ctxP.moveTo(0, y); ctxP.lineTo(profileW, y); ctxP.stroke();
+    ctxP.setLineDash([]);
+  });
+}
+
+// ── Analysis rendering ─────────────────────────────────
+function vpRenderAnalysis(){
+  const a = vpState.data.analysis;
+  const overall = document.getElementById('vpOverall');
+  const pos = a.position || {};
+  overall.innerHTML = `
+    <div style="font-family:var(--fm);font-size:12px;font-weight:600;margin-bottom:6px">
+      Last close: ₹${a.last_close.toLocaleString('en-IN')}
+      <span style="color:var(--muted);font-weight:400;margin-left:10px">Zone: ${pos.zone||'-'}</span>
+    </div>
+    <div style="font-family:var(--fb);font-size:13px;color:var(--text);margin-bottom:6px">${a.verdict||''}</div>
+    <div style="font-family:var(--fm);font-size:10px;color:var(--muted2)">
+      Weekly levels — VAH: ${vpState.data.vp.vah.toFixed(2)} ·
+      POC: ${vpState.data.vp.poc.toFixed(2)} ·
+      VAL: ${vpState.data.vp.val.toFixed(2)}
+      ${pos.nearest_level_name ? `· Nearest level: ${pos.nearest_level_name} (${pos.nearest_level_dist_pct}% away)` : ''}
+    </div>
+  `;
+
+  const tfGrid = document.getElementById('vpTimeframeAnalysis');
+  const blocks = [];
+  ['daily','4h'].forEach(tf=>{
+    const t = a[tf];
+    if(!t || !t.available){
+      blocks.push(`<div class="card"><div style="font-family:var(--fm);font-size:11px;font-weight:600;margin-bottom:6px">${tf.toUpperCase()}</div><div style="font-family:var(--fm);font-size:10px;color:var(--muted)">Not enough data</div></div>`);
+      return;
+    }
+    let sigHtml = '';
+    const sigKeys = Object.keys(t.signals||{});
+    if(!sigKeys.length){
+      sigHtml = `<div style="font-family:var(--fm);font-size:10px;color:var(--muted)">No candle currently interacting with a weekly level.</div>`;
+    } else {
+      sigHtml = sigKeys.map(k=>{
+        const s = t.signals[k];
+        const valid = s.valid_signal;
+        const color = valid ? 'var(--green)' : 'var(--muted)';
+        return `<div style="font-family:var(--fm);font-size:10px;margin-bottom:4px;padding:4px 6px;border-left:2px solid ${color}">
+          <b>${k}</b> — ${s.type.replace(/_/g,' ')}
+          ${s.closes_above ? ' · closes above' : s.closes_at ? ' · closes AT level (indecision)' : ' · closes below'}
+          ${s.volume_ok ? ' · vol OK' : ' · vol below avg'}
+          ${valid ? ' <b style="color:var(--green)">→ VALID SIGNAL</b>' : ''}
+        </div>`;
+      }).join('');
+    }
+    const ratio = t.vol_ratio!=null ? t.vol_ratio.toFixed(2)+'x avg' : '-';
+    blocks.push(`<div class="card">
+      <div style="font-family:var(--fm);font-size:11px;font-weight:600;margin-bottom:6px">${tf.toUpperCase()} <span style="color:var(--muted);font-weight:400">— last: ${new Date(t.last_date).toLocaleString('en-IN')}</span></div>
+      <div style="font-family:var(--fm);font-size:10px;color:var(--muted2);margin-bottom:8px">Close: ${t.last_close.toFixed(2)} · Volume: ${ratio} ${t.vol_above_2x?'(≥2x)':t.vol_above_avg?'(above avg)':''}</div>
+      ${sigHtml}
+    </div>`);
+  });
+
+  // VAH breakout (Strategy 2, Rule 20)
+  if(a.vah_breakout){
+    const vb = a.vah_breakout;
+    const color = vb.valid_breakout ? 'var(--green)' : 'var(--muted)';
+    blocks.push(`<div class="card">
+      <div style="font-family:var(--fm);font-size:11px;font-weight:600;margin-bottom:6px">STRATEGY 2 — VAH BREAKOUT CHECK</div>
+      <div style="font-family:var(--fm);font-size:10px;border-left:2px solid ${color};padding:4px 6px">
+        Daily close ${vb.closes_above?'above':'below/at'} VAH
+        ${vb.meets_2x_volume ? ' · volume ≥ 2x avg ✓' : ' · volume &lt; 2x avg (Rule 20 requires 2x)'}
+        ${vb.valid_breakout ? ' <b style="color:var(--green)">→ VALID BREAKOUT</b>' : ' → not a valid breakout'}
+      </div>
+    </div>`);
+  }
+
+  tfGrid.innerHTML = blocks.join('');
 }
 
 function openScreener() {

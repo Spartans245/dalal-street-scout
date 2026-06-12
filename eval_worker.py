@@ -366,8 +366,25 @@ def compute_outcome(sig):
     Walk sig.prices to find WIN/LOSS/EXPIRED. Skips already-resolved signals.
     Baseline: price on tier_date. WIN=+15%, LOSS=-9%, EXPIRED=60 calendar days.
     """
-    if sig.get('outcome') in ('WIN', 'LOSS', 'EXPIRED'):
+    if sig.get('outcome') in ('WIN', 'LOSS'):
         return
+    if sig.get('outcome') == 'EXPIRED':
+        # Re-evaluate if tier_date was updated after expiry was set — expiry
+        # window runs from tier_date, so a promotion resets the clock.
+        tier_date = sig.get('tier_date') or sig.get('day0', '')
+        if not tier_date:
+            return
+        try:
+            expiry_check = datetime.date.fromisoformat(tier_date) + datetime.timedelta(days=MAX_CALENDAR_DAYS)
+        except ValueError:
+            return
+        if datetime.date.today() < expiry_check:
+            sig['outcome']       = 'OPEN'
+            sig['outcome_day']   = None
+            sig['outcome_price'] = None
+            sig['outcome_ret']   = None
+        else:
+            return
     prices_dict = sig.get('prices', {})
     day0        = sig.get('day0', '')
     if not prices_dict or not day0:
@@ -377,7 +394,7 @@ def compute_outcome(sig):
     if not p0:
         return
     try:
-        expiry_date = datetime.date.fromisoformat(day0) + datetime.timedelta(days=MAX_CALENDAR_DAYS)
+        expiry_date = datetime.date.fromisoformat(tier_date or day0) + datetime.timedelta(days=MAX_CALENDAR_DAYS)
     except ValueError:
         return
     sorted_dates = [d for d in sorted(prices_dict.keys()) if d > tier_date]
@@ -657,6 +674,74 @@ def update_stage_history(signals, stocks, trading_date=None):
     return updated
 
 
+# ── Kite fallback for SME stocks dropped from NSE universe ───────────────────
+
+def update_prices_kite_fallback(signals, trading_date):
+    """
+    After update_prices() runs, some OPEN signals may still lack today's price
+    because their stock dropped out of stocks_master (e.g. SME stocks renamed
+    to TICKER-SM by Kite). Fetch ohlc.close via Kite quote() for those signals.
+    ohlc.close = previous day's close when called after market hours, which is
+    exactly the EOD price we need.
+    """
+    missing = [
+        sig for sig in signals
+        if sig.get('outcome') == 'OPEN'
+        and sig.get('tier') == 'signal'
+        and trading_date not in sig.get('prices', {})
+    ]
+    if not missing:
+        return 0
+
+    try:
+        from kite_worker import load_kite
+        kite = load_kite()
+    except Exception as e:
+        print(f'[EVAL] Kite fallback: auth failed — {e}')
+        return 0
+
+    # Build instrument keys — try both plain and -SM (SME board)
+    key_to_sig = {}
+    keys = []
+    for sig in missing:
+        t = sig['ticker']
+        board = sig.get('board', 'main')
+        if board == 'sme':
+            k = f'NSE:{t}-SM'
+        else:
+            k = f'NSE:{t}'
+        keys.append(k)
+        key_to_sig[k] = sig
+        # Also try the other variant as fallback
+        alt = f'NSE:{t}-SM' if board != 'sme' else f'NSE:{t}'
+        if alt not in key_to_sig:
+            keys.append(alt)
+            key_to_sig[alt] = sig
+
+    updated = 0
+    try:
+        result = kite.quote(keys)
+        for key, val in result.items():
+            sig = key_to_sig.get(key)
+            if not sig:
+                continue
+            # ohlc.close = previous session's close (correct EOD price)
+            price = val.get('ohlc', {}).get('close', 0)
+            if price and price > 0:
+                price = round(float(price), 2)
+                if trading_date not in sig.get('prices', {}):
+                    sig.setdefault('prices', {})[trading_date] = price
+                    updated += 1
+    except Exception as e:
+        print(f'[EVAL] Kite fallback quote error: {e}')
+
+    if updated:
+        print(f'[EVAL] Kite fallback: {updated}/{len(missing)} missing prices filled via Kite quote()')
+    else:
+        print(f'[EVAL] Kite fallback: {len(missing)} signals still missing price after Kite attempt')
+    return updated
+
+
 # ── Entry points ──────────────────────────────────────────────────────────────
 
 def run_eod():
@@ -688,6 +773,7 @@ def run_eod():
 
     process_selected(signals, selected, stocks, trading_date)
     update_prices(signals, stocks, nifty, mode='eod', trading_date=trading_date)
+    update_prices_kite_fallback(signals, trading_date)
 
     resolved = 0
     for sig in signals:
